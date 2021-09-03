@@ -65,7 +65,7 @@ class LimitDataset(torch.utils.data.Dataset):
         return self.dataset.num_videos
 
 
-def getKinetics():
+def getKinetics(subset):  # trainかvalを指定
     args = Args()
     train_transform = Compose([
         ApplyTransformToKey(
@@ -88,24 +88,24 @@ def getKinetics():
 
     root_Kinetics = '/mnt/NAS-TVS872XT/dataset/Kinetics400/'
 
-    train_set = Kinetics(
-        data_path=root_Kinetics + 'train',
-        video_path_prefix=root_Kinetics + 'train',
+    set = Kinetics(
+        data_path=root_Kinetics + subset,
+        video_path_prefix=root_Kinetics + subset,
         clip_sampler=RandomClipSampler(clip_duration=args.clip_duration),
         video_sampler=RandomSampler,
         decode_audio=False,
         transform=train_transform,
     )
 
-    train_loader = DataLoader(LimitDataset(train_set),
-                              batch_size=args.batch_size,
-                              drop_last=True,
-                              num_workers=args.num_workers)
-    return train_loader
+    loader = DataLoader(LimitDataset(set),
+                        batch_size=args.batch_size,
+                        drop_last=True,
+                        num_workers=args.num_workers)
+    return loader
 
 
 def main():
-    loader = getKinetics()
+    loader = getKinetics("val")
     print("len:{}".format(len(loader)))
     for i, batch in enumerate(loader):
         if i == 0:
