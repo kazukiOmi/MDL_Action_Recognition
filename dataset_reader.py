@@ -38,12 +38,13 @@ class Args:
         self.annotation_path = self.metadata_path
         self.FRAMES_PER_CLIP = 16
         self.STEP_BETWEEN_CLIPS = 16
-        self.model = 'x3d_m'
         self.BATCH_SIZE = 16
         self.NUM_WORKERS = 24
 
-        self.clip_duration = 16/25  # 25FPSを想定して16枚
-        self.video_num_subsampled = 16  # 16枚抜き出す
+        self.CLIP_DURATION = 16/25  # 25FPSを想定して16枚
+        self.VIDEO_NUM_SUBSAMPLED = 16  # 16枚抜き出す
+        self.UCF101_NUM_CLASSES = 101
+        self.KINETIC400_NUM_CLASSES = 400
 
 
 class LimitDataset(torch.utils.data.Dataset):
@@ -61,13 +62,22 @@ class LimitDataset(torch.utils.data.Dataset):
         return self.dataset.num_videos
 
 
-def get_kinetics(subset):  # trainかvalを指定
+def get_kinetics(subset):
+    """
+    Kinetics400のデータローダーを取得
+
+    Args:
+        subset (str): "train" or "val"
+
+    Returns:
+        torch.utils.data.DataLoader: 取得したデータローダー
+    """
     args = Args()
     train_transform = Compose([
         ApplyTransformToKey(
             key="video",
             transform=Compose([
-                UniformTemporalSubsample(args.video_num_subsampled),
+                UniformTemporalSubsample(args.VIDEO_NUM_SUBSAMPLED),
                 transforms.Lambda(lambda x: x / 255.),
                 Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
                 RandomShortSideScale(min_size=256, max_size=320,),
@@ -87,20 +97,29 @@ def get_kinetics(subset):  # trainかvalを指定
     set = Kinetics(
         data_path=root_kinetics + subset,
         video_path_prefix=root_kinetics + subset,
-        clip_sampler=RandomClipSampler(clip_duration=args.clip_duration),
+        clip_sampler=RandomClipSampler(clip_duration=args.CLIP_DURATION),
         video_sampler=RandomSampler,
         decode_audio=False,
         transform=train_transform,
     )
 
     loader = DataLoader(LimitDataset(set),
-                        batch_size=args.batch_size,
+                        batch_size=args.BATCH_SIZE,
                         drop_last=True,
-                        num_workers=args.num_workers)
+                        num_workers=args.NUM_WORKERS)
     return loader
 
 
-def get_ucf101(subset):  # trainかvalを指定
+def get_ucf101(subset):
+    """
+    ucf101のデータローダーを取得
+
+    Args:
+        subset (str): "train" or "val"
+
+    Returns:
+        torch.utils.data.DataLoader: 取得したデータローダー
+    """
     subset_root_Ucf101 = 'ucfTrainTestlist/trainlist01.txt'
     if subset == "val":
         subset_root_Ucf101 = 'ucfTrainTestlist/testlist01.txt'
@@ -110,7 +129,7 @@ def get_ucf101(subset):  # trainかvalを指定
         ApplyTransformToKey(
             key="video",
             transform=Compose([
-                UniformTemporalSubsample(args.video_num_subsampled),
+                UniformTemporalSubsample(args.VIDEO_NUM_SUBSAMPLED),
                 transforms.Lambda(lambda x: x / 255.),
                 Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
                 RandomShortSideScale(min_size=256, max_size=320,),
@@ -130,16 +149,16 @@ def get_ucf101(subset):  # trainかvalを指定
     set = Ucf101(
         data_path=root_ucf101 + subset_root_Ucf101,
         video_path_prefix=root_ucf101 + 'video/',
-        clip_sampler=RandomClipSampler(clip_duration=args.clip_duration),
+        clip_sampler=RandomClipSampler(clip_duration=args.CLIP_DURATION),
         video_sampler=RandomSampler,
         decode_audio=False,
         transform=train_transform,
     )
 
     loader = DataLoader(LimitDataset(set),
-                        batch_size=args.batch_size,
+                        batch_size=args.BATCH_SIZE,
                         drop_last=True,
-                        num_workers=args.num_workers)
+                        num_workers=args.NUM_WORKERS)
     return loader
 
 
@@ -159,6 +178,15 @@ def get_dataset(dataset, subset):
     elif dataset == "UCF101":
         return get_ucf101(subset)
     return False
+
+
+def get_model(model):
+    model = torch.hub.load(
+        'facebookresearch/pytorchvideo', 'x3d_m', pretrained=True)
+    do_fine_tune = True
+    if do_fine_tune:
+        for param in model.parameters():
+            param.requires_grad = False
 
 
 def main():
