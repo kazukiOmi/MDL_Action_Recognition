@@ -36,11 +36,11 @@ class Args:
         self.metadata_path = '/mnt/NAS-TVS872XT/dataset/'
         self.root = self.metadata_path
         self.annotation_path = self.metadata_path
-        self.frames_per_clip = 16
-        self.step_between_clips = 16
+        self.FRAMES_PER_CLIP = 16
+        self.STEP_BETWEEN_CLIPS = 16
         self.model = 'x3d_m'
-        self.batch_size = 16
-        self.num_workers = 24
+        self.BATCH_SIZE = 16
+        self.NUM_WORKERS = 24
 
         self.clip_duration = 16/25  # 25FPSを想定して16枚
         self.video_num_subsampled = 16  # 16枚抜き出す
@@ -61,7 +61,7 @@ class LimitDataset(torch.utils.data.Dataset):
         return self.dataset.num_videos
 
 
-def getKinetics(subset):  # trainかvalを指定
+def get_kinetics(subset):  # trainかvalを指定
     args = Args()
     train_transform = Compose([
         ApplyTransformToKey(
@@ -82,11 +82,11 @@ def getKinetics(subset):  # trainかvalを指定
         RemoveKey("audio"),
     ])
 
-    root_Kinetics = '/mnt/NAS-TVS872XT/dataset/Kinetics400/'
+    root_kinetics = '/mnt/NAS-TVS872XT/dataset/Kinetics400/'
 
     set = Kinetics(
-        data_path=root_Kinetics + subset,
-        video_path_prefix=root_Kinetics + subset,
+        data_path=root_kinetics + subset,
+        video_path_prefix=root_kinetics + subset,
         clip_sampler=RandomClipSampler(clip_duration=args.clip_duration),
         video_sampler=RandomSampler,
         decode_audio=False,
@@ -100,7 +100,7 @@ def getKinetics(subset):  # trainかvalを指定
     return loader
 
 
-def getUcf101(subset):  # trainかvalを指定
+def get_ucf101(subset):  # trainかvalを指定
     subset_root_Ucf101 = 'ucfTrainTestlist/trainlist01.txt'
     if subset == "val":
         subset_root_Ucf101 = 'ucfTrainTestlist/testlist01.txt'
@@ -125,11 +125,11 @@ def getUcf101(subset):  # trainかvalを指定
         RemoveKey("audio"),
     ])
 
-    root_Ucf101 = '/mnt/NAS-TVS872XT/dataset/UCF101/'
+    root_ucf101 = '/mnt/NAS-TVS872XT/dataset/UCF101/'
 
-    set = Kinetics(
-        data_path=root_Ucf101 + subset_root_Ucf101,
-        video_path_prefix=root_Ucf101 + 'video/',
+    set = Ucf101(
+        data_path=root_ucf101 + subset_root_Ucf101,
+        video_path_prefix=root_ucf101 + 'video/',
         clip_sampler=RandomClipSampler(clip_duration=args.clip_duration),
         video_sampler=RandomSampler,
         decode_audio=False,
@@ -155,14 +155,14 @@ def get_dataset(dataset, subset):
         torch.utils.data.DataLoader: 取得したデータローダー
     """
     if dataset == "Kinetics400":
-        return getKinetics(subset)
+        return get_kinetics(subset)
     elif dataset == "UCF101":
-        return getUcf101(subset)
+        return get_ucf101(subset)
     return False
 
 
 def main():
-    loader = get_dataset("Kinetics400", "train")
+    loader = get_dataset("UCF101", "train")
     print("len:{}".format(len(loader)))
     for i, batch in enumerate(loader):
         if i == 0:
