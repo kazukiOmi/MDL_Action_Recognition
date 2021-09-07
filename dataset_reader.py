@@ -1,3 +1,4 @@
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -180,17 +181,38 @@ def get_dataset(dataset, subset):
     return False
 
 
-def get_model(model):
+def get_model(model_name, pretrained):
+    """
+    pytorchvideoからモデルを取得
+
+    Args:
+        model (str): "x3d_m"(UCF101用) or "slow_r50"(Kinetics400用)
+        pretrained (bool): "True" or "False"
+
+    Returns:
+        model: 取得したモデル
+    """
     model = torch.hub.load(
-        'facebookresearch/pytorchvideo', 'x3d_m', pretrained=True)
+        'facebookresearch/pytorchvideo', model_name, pretrained=pretrained)
     do_fine_tune = True
     if do_fine_tune:
         for param in model.parameters():
             param.requires_grad = False
+    if model_name == "x3d_m":
+        model.blocks[5].proj = nn.Linear(
+            model.blocks[5].proj.in_features, 101)
+    return model
 
 
-def main():
-    loader = get_dataset("UCF101", "train")
+def dataset_check(dataset, subset):
+    """
+    取得したローダーの挙動を確認
+    Args:
+        dataset (str): "Kinetis400" or "UCF101"
+        subset (str): "train" or "val"
+
+    """
+    loader = get_dataset("Kinetics400", "train")
     print("len:{}".format(len(loader)))
     for i, batch in enumerate(loader):
         if i == 0:
@@ -199,6 +221,17 @@ def main():
         print(batch['label'].cpu().numpy())
         if i > 4:
             break
+
+
+# def model_check(model_name, subset):
+
+
+def main():
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    model = get_model("slow_r50", True)
+    model = model.to(device)
+    # data = torch.randn(2, 3, 16, 224, 224).to(device)
+    # print(model(data))
 
 
 if __name__ == '__main__':
