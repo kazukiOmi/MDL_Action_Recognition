@@ -4,13 +4,10 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
 from torch.utils.data import DistributedSampler, RandomSampler
 
-
 from torchvision import transforms
-
 
 from pytorchvideo.models import x3d
 from pytorchvideo.data import Ucf101, RandomClipSampler, UniformClipSampler, Kinetics
-
 
 from pytorchvideo.transforms import (
     ApplyTransformToKey,
@@ -28,7 +25,6 @@ from torchvision.transforms import (
     RandomHorizontalFlip,
 )
 
-
 from tqdm import tqdm
 import itertools
 import os
@@ -37,7 +33,7 @@ import pickle
 
 class Args:
     def __init__(self):
-        self.metadata_path = '/mnt/NAS-TVS872XT/dataset/Kinetics400/'
+        self.metadata_path = '/mnt/NAS-TVS872XT/dataset/'
         self.root = self.metadata_path
         self.annotation_path = self.metadata_path
         self.frames_per_clip = 16
@@ -104,8 +100,69 @@ def getKinetics(subset):  # trainかvalを指定
     return loader
 
 
+def getUcf101(subset):  # trainかvalを指定
+    subset_root_Ucf101 = 'ucfTrainTestlist/trainlist01.txt'
+    if subset == "val":
+        subset_root_Ucf101 = 'ucfTrainTestlist/testlist01.txt'
+
+    args = Args()
+    train_transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.video_num_subsampled),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                RandomShortSideScale(min_size=256, max_size=320,),
+                RandomCrop(224),
+                RandomHorizontalFlip(),
+            ]),
+        ),
+        ApplyTransformToKey(
+            key="label",
+            transform=transforms.Lambda(lambda x: x),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    root_Ucf101 = '/mnt/NAS-TVS872XT/dataset/UCF101/'
+
+    set = Kinetics(
+        data_path=root_Ucf101 + subset_root_Ucf101,
+        video_path_prefix=root_Ucf101 + 'video/',
+        clip_sampler=RandomClipSampler(clip_duration=args.clip_duration),
+        video_sampler=RandomSampler,
+        decode_audio=False,
+        transform=train_transform,
+    )
+
+    loader = DataLoader(LimitDataset(set),
+                        batch_size=args.batch_size,
+                        drop_last=True,
+                        num_workers=args.num_workers)
+    return loader
+
+
+def get_dataset(dataset, subset):
+    """
+    データローダーを取得する
+
+    Args:
+        dataset (str): "Kinetis400" or "UCF101"
+        subset (str): "train" or "val"
+
+    Returns:
+        torch.utils.data.DataLoader: 取得したデータローダー
+    """
+    if dataset == "Kinetics400":
+        return getKinetics(subset)
+    elif dataset == "UCF101":
+        return getUcf101(subset)
+    return False
+
+
 def main():
-    loader = getKinetics("val")
+    loader = get_dataset("Kinetics400", "train")
     print("len:{}".format(len(loader)))
     for i, batch in enumerate(loader):
         if i == 0:
