@@ -40,7 +40,7 @@ class Args:
         self.FRAMES_PER_CLIP = 16
         self.STEP_BETWEEN_CLIPS = 16
         self.BATCH_SIZE = 16
-        self.NUM_WORKERS = 24
+        self.NUM_WORKERS = 8  # kinetics:8, ucf101:24
 
         self.CLIP_DURATION = 16/25  # 25FPSを想定して16枚
         self.VIDEO_NUM_SUBSAMPLED = 16  # 16枚抜き出す
@@ -243,8 +243,25 @@ def main():
     sample_loader = DataLoader(LimitDataset(dataset),
                                batch_size=16,
                                drop_last=True,
-                               num_workers=24)
+                               num_workers=8)
     print(len(sample_loader))
+    # for i, batch in enumerate(sample_loader):
+    #     print(i)
+    # x = iter(sample_loader).__next__()
+
+    with tqdm(enumerate(sample_loader),
+              total=len(sample_loader),
+              leave=True) as pbar_batch:
+        for batch_idx, batch in pbar_batch:
+            if batch_idx == 0:
+                inputs = batch["video"].to(device)
+                labels = batch["label"].to(device)
+                # batch_size = inputs.size(0)
+                outputs = model(inputs)
+                # print(outputs.shape)
+                preds = torch.squeeze(outputs.max(dim=1)[1])
+                acc = (preds == labels).float().mean().item()
+                print(acc)
 
 
 if __name__ == '__main__':
