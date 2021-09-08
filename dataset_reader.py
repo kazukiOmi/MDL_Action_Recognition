@@ -10,6 +10,11 @@ from torchvision import transforms
 from pytorchvideo.models import x3d
 from pytorchvideo.data import Ucf101, RandomClipSampler, UniformClipSampler, Kinetics
 
+# from torchvision.transforms._transforms_video import (
+#     CenterCropVideo,
+#     NormalizeVideo,
+# )
+
 from pytorchvideo.transforms import (
     ApplyTransformToKey,
     Normalize,
@@ -43,8 +48,8 @@ class Args:
         self.BATCH_SIZE = 16
         self.NUM_WORKERS = 8  # kinetics:8, ucf101:24
 
-        self.CLIP_DURATION = 16/25  # 25FPSを想定して16枚
-        self.VIDEO_NUM_SUBSAMPLED = 16  # 16枚抜き出す
+        self.CLIP_DURATION = (8 * 8) / 30  # (num_frames * sampling_rate)/fps
+        self.VIDEO_NUM_SUBSAMPLED = 8  # 事前学習済みモデルに合わせて16→8
         self.UCF101_NUM_CLASSES = 101
         self.KINETIC400_NUM_CLASSES = 400
 
@@ -69,7 +74,7 @@ def get_kinetics(subset):
     Kinetics400のデータセットを取得
 
     Args:
-        subset (str): "train" or "val"
+        subset (str): "train" or "val" or "test"
 
     Returns:
         pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset: 取得したデータセット
@@ -82,8 +87,11 @@ def get_kinetics(subset):
                 UniformTemporalSubsample(args.VIDEO_NUM_SUBSAMPLED),
                 transforms.Lambda(lambda x: x / 255.),
                 Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
-                RandomShortSideScale(min_size=256, max_size=320,),
-                RandomCrop(224),
+                ShortSideScale(size=256),
+                # RandomShortSideScale(min_size=256, max_size=320,),
+                # CenterCropVideo(crop_size=(256, 256)),
+                CenterCrop(256),
+                # RandomCrop(224),
                 RandomHorizontalFlip(),
             ]),
         ),
@@ -96,16 +104,28 @@ def get_kinetics(subset):
 
     root_kinetics = '/mnt/NAS-TVS872XT/dataset/Kinetics400/'
 
-    dataset = Kinetics(
-        data_path=root_kinetics + subset,
-        video_path_prefix=root_kinetics + subset,
-        clip_sampler=RandomClipSampler(clip_duration=args.CLIP_DURATION),
-        video_sampler=RandomSampler,
-        decode_audio=False,
-        transform=transform,
-    )
+    if subset == "test":
+        dataset = Kinetics(
+            data_path=root_kinetics + "test_list.txt",
+            video_path_prefix=root_kinetics + 'test/',
+            clip_sampler=RandomClipSampler(clip_duration=args.CLIP_DURATION),
+            video_sampler=RandomSampler,
+            decode_audio=False,
+            transform=transform,
+        )
+        return dataset
+    else:
+        dataset = Kinetics(
+            data_path=root_kinetics + subset,
+            video_path_prefix=root_kinetics + subset,
+            clip_sampler=RandomClipSampler(clip_duration=args.CLIP_DURATION),
+            video_sampler=RandomSampler,
+            decode_audio=False,
+            transform=transform,
+        )
+        return dataset
 
-    return dataset
+    return False
 
 
 def get_ucf101(subset):
@@ -137,7 +157,7 @@ def get_ucf101(subset):
         ),
         ApplyTransformToKey(
             key="label",
-            transform=transforms.Lambda(lambda x: x),
+            transform=transforms.Lambda(lambda x: x-1),
         ),
         RemoveKey("audio"),
     ])
@@ -179,7 +199,7 @@ def get_dataset(dataset, subset):
     データセットを取得
     Args:
         dataset (str): "Kinetis400" or "UCF101"
-        subset (str): "train" or "val"
+        subset (str): "train" or "val" or "test"
 
     Returns:
         pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset): 取得したデータセット
@@ -239,7 +259,7 @@ def sample_check():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = get_model("slow_r50", True)
     model = model.to(device)
-    dataset = get_dataset("Kinetics400", "val")
+    dataset = get_dataset("Kinetics400", "test")
 
     dataset.video_sampler._num_samples = 100
 
