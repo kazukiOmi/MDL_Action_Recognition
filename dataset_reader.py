@@ -27,6 +27,7 @@ from torchvision.transforms import (
 )
 
 from tqdm import tqdm
+from collections import OrderedDict
 import itertools
 import os
 import pickle
@@ -65,13 +66,13 @@ class LimitDataset(torch.utils.data.Dataset):
 
 def get_kinetics(subset):
     """
-    Kinetics400のデータローダーを取得
+    Kinetics400のデータセットを取得
 
     Args:
         subset (str): "train" or "val"
 
     Returns:
-        torch.utils.data.DataLoader: 取得したデータローダー
+        pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset: 取得したデータセット
     """
     args = Args()
     transform = Compose([
@@ -95,7 +96,7 @@ def get_kinetics(subset):
 
     root_kinetics = '/mnt/NAS-TVS872XT/dataset/Kinetics400/'
 
-    set = Kinetics(
+    dataset = Kinetics(
         data_path=root_kinetics + subset,
         video_path_prefix=root_kinetics + subset,
         clip_sampler=RandomClipSampler(clip_duration=args.CLIP_DURATION),
@@ -104,22 +105,18 @@ def get_kinetics(subset):
         transform=transform,
     )
 
-    loader = DataLoader(LimitDataset(set),
-                        batch_size=args.BATCH_SIZE,
-                        drop_last=True,
-                        num_workers=args.NUM_WORKERS)
-    return loader, set
+    return dataset
 
 
 def get_ucf101(subset):
     """
-    ucf101のデータローダーを取得
+    ucf101のデータセットを取得
 
     Args:
         subset (str): "train" or "val"
 
     Returns:
-        torch.utils.data.DataLoader: 取得したデータローダー
+        pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset: 取得したデータセット
     """
     subset_root_Ucf101 = 'ucfTrainTestlist/trainlist01.txt'
     if subset == "val":
@@ -147,7 +144,7 @@ def get_ucf101(subset):
 
     root_ucf101 = '/mnt/NAS-TVS872XT/dataset/UCF101/'
 
-    set = Ucf101(
+    dataset = Ucf101(
         data_path=root_ucf101 + subset_root_Ucf101,
         video_path_prefix=root_ucf101 + 'video/',
         clip_sampler=RandomClipSampler(clip_duration=args.CLIP_DURATION),
@@ -156,23 +153,36 @@ def get_ucf101(subset):
         transform=transform,
     )
 
-    loader = DataLoader(LimitDataset(set),
+    return dataset
+
+
+def make_loader(dataset):
+    """
+    データローダーを作成
+
+    Args:
+        dataset (pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset): get_datasetメソッドで取得したdataset
+
+    Returns:
+        torch.utils.data.DataLoader: 取得したデータローダー
+    """
+    args = Args()
+    loader = DataLoader(LimitDataset(dataset),
                         batch_size=args.BATCH_SIZE,
                         drop_last=True,
                         num_workers=args.NUM_WORKERS)
     return loader
 
 
-def get_dataloader(dataset, subset):
+def get_dataset(dataset, subset):
     """
-    データローダーを取得する
-
+    データセットを取得
     Args:
         dataset (str): "Kinetis400" or "UCF101"
         subset (str): "train" or "val"
 
     Returns:
-        torch.utils.data.DataLoader: 取得したデータローダー
+        pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset): 取得したデータセット
     """
     if dataset == "Kinetics400":
         return get_kinetics(subset)
@@ -212,7 +222,8 @@ def dataset_check(dataset, subset):
         subset (str): "train" or "val"
 
     """
-    loader = get_dataloader("Kinetics400", "train")
+    dataset = get_dataset("Kinetics400", "train")
+    loader = make_loader(dataset)
     print("len:{}".format(len(loader)))
     for i, batch in enumerate(loader):
         if i == 0:
@@ -223,45 +234,38 @@ def dataset_check(dataset, subset):
             break
 
 
-# def model_check(model_name, subset):
-
-
-def main():
+def sample_check():
+    """学習済みモデルにサンプルデータ100個を流し込んで挙動を確認"""
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     model = get_model("slow_r50", True)
     model = model.to(device)
-    # data = torch.randn(2, 3, 16, 224, 224).to(device)
-    # print(model(data))
-    loader, dataset = get_dataloader("Kinetics400", "val")
-    # print(dataset.num_videos)
-    # print(type(dataset))
-    # print(type(dataset.video_sampler))
-    # print(type(dataset.video_sampler._num_samples))
-    dataset.video_sampler._num_samples = 100
-    # print(dataset.num_videos)
+    dataset = get_dataset("Kinetics400", "val")
 
-    sample_loader = DataLoader(LimitDataset(dataset),
-                               batch_size=16,
-                               drop_last=True,
-                               num_workers=8)
-    print(len(sample_loader))
-    # for i, batch in enumerate(sample_loader):
-    #     print(i)
-    # x = iter(sample_loader).__next__()
+    dataset.video_sampler._num_samples = 100
+
+    sample_loader = make_loader(dataset)
+
+    acc_list = []
 
     with tqdm(enumerate(sample_loader),
               total=len(sample_loader),
               leave=True) as pbar_batch:
+
         for batch_idx, batch in pbar_batch:
-            if batch_idx == 0:
-                inputs = batch["video"].to(device)
-                labels = batch["label"].to(device)
-                # batch_size = inputs.size(0)
-                outputs = model(inputs)
-                # print(outputs.shape)
-                preds = torch.squeeze(outputs.max(dim=1)[1])
-                acc = (preds == labels).float().mean().item()
-                print(acc)
+            inputs = batch["video"].to(device)
+            labels = batch["label"].to(device)
+            outputs = model(inputs)
+
+            preds = torch.squeeze(outputs.max(dim=1)[1])
+            acc = (preds == labels).float().mean().item()
+            acc_list.append(acc)
+            pbar_batch.set_postfix(OrderedDict(acc=acc))
+
+    print("acc:{}".format(sum(acc_list) / len(acc_list)))
+
+
+def main():
+    sample_check()
 
 
 if __name__ == '__main__':
