@@ -74,7 +74,7 @@ def get_kinetics(subset):
         torch.utils.data.DataLoader: 取得したデータローダー
     """
     args = Args()
-    train_transform = Compose([
+    transform = Compose([
         ApplyTransformToKey(
             key="video",
             transform=Compose([
@@ -101,14 +101,14 @@ def get_kinetics(subset):
         clip_sampler=RandomClipSampler(clip_duration=args.CLIP_DURATION),
         video_sampler=RandomSampler,
         decode_audio=False,
-        transform=train_transform,
+        transform=transform,
     )
 
     loader = DataLoader(LimitDataset(set),
                         batch_size=args.BATCH_SIZE,
                         drop_last=True,
                         num_workers=args.NUM_WORKERS)
-    return loader
+    return loader, set
 
 
 def get_ucf101(subset):
@@ -126,7 +126,7 @@ def get_ucf101(subset):
         subset_root_Ucf101 = 'ucfTrainTestlist/testlist01.txt'
 
     args = Args()
-    train_transform = Compose([
+    transform = Compose([
         ApplyTransformToKey(
             key="video",
             transform=Compose([
@@ -153,7 +153,7 @@ def get_ucf101(subset):
         clip_sampler=RandomClipSampler(clip_duration=args.CLIP_DURATION),
         video_sampler=RandomSampler,
         decode_audio=False,
-        transform=train_transform,
+        transform=transform,
     )
 
     loader = DataLoader(LimitDataset(set),
@@ -163,7 +163,7 @@ def get_ucf101(subset):
     return loader
 
 
-def get_dataset(dataset, subset):
+def get_dataloader(dataset, subset):
     """
     データローダーを取得する
 
@@ -212,7 +212,7 @@ def dataset_check(dataset, subset):
         subset (str): "train" or "val"
 
     """
-    loader = get_dataset("Kinetics400", "train")
+    loader = get_dataloader("Kinetics400", "train")
     print("len:{}".format(len(loader)))
     for i, batch in enumerate(loader):
         if i == 0:
@@ -232,6 +232,19 @@ def main():
     model = model.to(device)
     # data = torch.randn(2, 3, 16, 224, 224).to(device)
     # print(model(data))
+    loader, dataset = get_dataloader("Kinetics400", "val")
+    # print(dataset.num_videos)
+    # print(type(dataset))
+    # print(type(dataset.video_sampler))
+    # print(type(dataset.video_sampler._num_samples))
+    dataset.video_sampler._num_samples = 100
+    # print(dataset.num_videos)
+
+    sample_loader = DataLoader(LimitDataset(dataset),
+                               batch_size=16,
+                               drop_last=True,
+                               num_workers=24)
+    print(len(sample_loader))
 
 
 if __name__ == '__main__':
