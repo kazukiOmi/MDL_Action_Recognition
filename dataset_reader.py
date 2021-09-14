@@ -47,9 +47,9 @@ class Args:
         self.STEP_BETWEEN_CLIPS = 16
         self.BATCH_SIZE = 16
         self.NUM_WORKERS = 8  # kinetics:8, ucf101:24
-
+        # self.CLIP_DURATION = 16 / 25
         self.CLIP_DURATION = (8 * 8) / 30  # (num_frames * sampling_rate)/fps
-        self.VIDEO_NUM_SUBSAMPLED = 8  # 事前学習済みモデルに合わせて16→8
+        self.VIDEO_NUM_SUBSAMPLED = 16  # 事前学習済みモデルに合わせて16→8
         self.UCF101_NUM_CLASSES = 101
         self.KINETIC400_NUM_CLASSES = 400
 
@@ -133,14 +133,14 @@ def get_ucf101(subset):
     ucf101のデータセットを取得
 
     Args:
-        subset (str): "train" or "val"
+        subset (str): "train" or "test"
 
     Returns:
         pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset: 取得したデータセット
     """
     subset_root_Ucf101 = 'ucfTrainTestlist/trainlist01.txt'
-    if subset == "val":
-        subset_root_Ucf101 = 'ucfTrainTestlist/testlist01.txt'
+    if subset == "test":
+        subset_root_Ucf101 = 'ucfTrainTestlist/testlist.txt'
 
     args = Args()
     transform = Compose([
@@ -257,9 +257,9 @@ def dataset_check(dataset, subset):
 def sample_check():
     """学習済みモデルにサンプルデータ100個を流し込んで挙動を確認"""
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = get_model("slow_r50", True)
+    model = get_model("x3d_m", True)  # datasetによって変更
     model = model.to(device)
-    dataset = get_dataset("Kinetics400", "test")
+    dataset = get_dataset("UCF101", "test")  # 確認したいデータセットを指定
 
     dataset.video_sampler._num_samples = 100
 
@@ -285,6 +285,7 @@ def sample_check():
 
 
 def main():
+    # dataset_check("UCF101", "train")
     sample_check()
 
 
