@@ -43,6 +43,7 @@ from tqdm import tqdm
 from collections import OrderedDict
 import itertools
 import os
+import argparse
 
 
 class Args:
@@ -53,11 +54,11 @@ class Args:
         self.NUM_EPOCH = 4
         self.FRAMES_PER_CLIP = 16
         self.STEP_BETWEEN_CLIPS = 16
-        self.BATCH_SIZE = 64
+        self.BATCH_SIZE = 32
         self.NUM_WORKERS = 32
         # self.CLIP_DURATION = 16 / 25
         self.CLIP_DURATION = (8 * 8) / 30  # (num_frames * sampling_rate)/fps
-        self.VIDEO_NUM_SUBSAMPLED = 2  # 事前学習済みモデルに合わせて16→8
+        self.VIDEO_NUM_SUBSAMPLED = 8
         self.UCF101_NUM_CLASSES = 101
         self.KINETIC400_NUM_CLASSES = 400
 
@@ -276,7 +277,8 @@ def get_ucf101(subset):
         RemoveKey("audio"),
     ])
 
-    root_ucf101 = '/mnt/dataset/UCF101/'
+    # root_ucf101 = '/mnt/dataset/UCF101/'
+    root_ucf101 = '/mnt/NAS-TVS872XT/dataset/UCF101/'
 
     dataset = Ucf101(
         data_path=root_ucf101 + subset_root_Ucf101,
@@ -310,13 +312,15 @@ def make_loader(dataset):
 
 def train():
     args = Args()
-    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     dataset = get_ucf101("train")
     train_loader = make_loader(dataset)
 
     model = ReconstructNet()
     model = model.to(device)
+    # model = torch.nn.DataParallel(model)
+    # torch.backends.cudnn.benchmark = True
 
     optimizer = torch.optim.SGD(
         model.parameters(),
@@ -395,11 +399,19 @@ def train():
 
             experiment.log_metric(
                 "epoch_accuracy",
-                train_acc.val,
+                train_acc.avg,
                 step=epoch + 1)
 
 
 def main():
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("-epoch", type=int, help="num_epoch")
+    # parser.add_argument("-bs", type=int, help="batch_size")
+    # parser.add_argument("-frame", type=int, help="num_frame from one video")
+    # args = parser.parse_args()
+    # print("epoch:{0}, batch_size:{1}. num_frame:{2}".format(
+    #     args.epoch, args.bs, args.frame
+    # ))
     train()
 
 
