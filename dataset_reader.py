@@ -8,7 +8,12 @@ from torch.utils.data import DistributedSampler, RandomSampler
 from torchvision import transforms
 
 from pytorchvideo.models import x3d
-from pytorchvideo.data import Ucf101, RandomClipSampler, UniformClipSampler, Kinetics
+from pytorchvideo.data import (
+    Ucf101,
+    RandomClipSampler,
+    UniformClipSampler,
+    Kinetics,
+)
 
 # from torchvision.transforms._transforms_video import (
 #     CenterCropVideo,
@@ -77,7 +82,7 @@ def get_kinetics(subset):
         subset (str): "train" or "val" or "test"
 
     Returns:
-        pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset: 取得したデータセット
+        pytorchvideo.data.LabeledVideoDataset: 取得したデータセット
     """
     args = Args()
     transform = Compose([
@@ -102,7 +107,7 @@ def get_kinetics(subset):
         RemoveKey("audio"),
     ])
 
-    root_kinetics = '/mnt/NAS-TVS872XT/dataset/Kinetics400/'
+    root_kinetics = '/mnt/dataset/Kinetics400/'
 
     if subset == "test":
         dataset = Kinetics(
@@ -136,7 +141,7 @@ def get_ucf101(subset):
         subset (str): "train" or "test"
 
     Returns:
-        pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset: 取得したデータセット
+        pytorchvideo.data.LabeledVideoDataset: 取得したデータセット
     """
     subset_root_Ucf101 = 'ucfTrainTestlist/trainlist01.txt'
     if subset == "test":
@@ -157,12 +162,12 @@ def get_ucf101(subset):
         ),
         ApplyTransformToKey(
             key="label",
-            transform=transforms.Lambda(lambda x: x-1),
+            transform=transforms.Lambda(lambda x: x - 1),
         ),
         RemoveKey("audio"),
     ])
 
-    root_ucf101 = '/mnt/NAS-TVS872XT/dataset/UCF101/'
+    root_ucf101 = '/mnt/dataset/UCF101/'
 
     dataset = Ucf101(
         data_path=root_ucf101 + subset_root_Ucf101,
@@ -181,7 +186,7 @@ def make_loader(dataset):
     データローダーを作成
 
     Args:
-        dataset (pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset): get_datasetメソッドで取得したdataset
+        dataset (pytorchvideo.data.LabeledVideoDataset): get_datasetメソッドで取得したdataset
 
     Returns:
         torch.utils.data.DataLoader: 取得したデータローダー
@@ -202,7 +207,7 @@ def get_dataset(dataset, subset):
         subset (str): "train" or "val" or "test"
 
     Returns:
-        pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset): 取得したデータセット
+        pytorchvideo.data.LabeledVideoDataset): 取得したデータセット
     """
     if dataset == "Kinetics400":
         return get_kinetics(subset)
@@ -257,9 +262,9 @@ def dataset_check(dataset, subset):
 def sample_check():
     """学習済みモデルにサンプルデータ100個を流し込んで挙動を確認"""
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    model = get_model("x3d_m", True)  # datasetによって変更
+    model = get_model("x3d_m", True)
     model = model.to(device)
-    dataset = get_dataset("UCF101", "test")  # 確認したいデータセットを指定
+    dataset = get_dataset("UCF101", "test")
 
     dataset.video_sampler._num_samples = 100
 
