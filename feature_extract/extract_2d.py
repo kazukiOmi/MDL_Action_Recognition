@@ -146,7 +146,7 @@ class ReconstructNet(nn.Module):
         super().__init__()
         model = torchvision.models.resnet152(pretrained=True)
         model_num_features = model.fc.in_features
-        num_class = 101
+        num_class = 400
         args = Args()
 
         self.video_to_frame = VideoToFrame()
@@ -163,8 +163,8 @@ class ReconstructNet(nn.Module):
         self.layer4 = model.layer4
         self.avgpool = model.avgpool
 
-        self.adapter_0 = Adapter(512)
-        # self.adapter_1 = Adapter(1024)
+        # self.adapter_0 = Adapter(512)
+        self.adapter_1 = Adapter(1024)
 
         self.net_top = nn.Sequential(
             nn.Linear(model_num_features, num_class)
@@ -193,9 +193,9 @@ class ReconstructNet(nn.Module):
         x = self.net_bottom(x)
         x = self.layer1(x)
         x = self.layer2(x)
-        x = self.adapter_0(x)
+        # x = self.adapter_0(x)
         x = self.layer3(x)
-        # x = self.adapter_1(x)
+        x = self.adapter_1(x)
         x = self.layer4(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
@@ -410,10 +410,10 @@ def make_loader(dataset):
 
 def train():
     args = Args()
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
-    train_dataset = get_ucf101("train")
-    val_dataset = get_ucf101("val")
+    train_dataset = get_kinetics("train")
+    val_dataset = get_kinetics("val")
     train_loader = make_loader(train_dataset)
     val_loader = make_loader(val_dataset)
 
@@ -430,11 +430,11 @@ def train():
     criterion = nn.CrossEntropyLoss()
 
     hyper_params = {
-        "Dataset": "UCF101",
+        "Dataset": "Kinetics400",
         "epoch": args.NUM_EPOCH,
         "batch_size": args.BATCH_SIZE,
         "num_frame": args.VIDEO_NUM_SUBSAMPLED,
-        "Adapter": "adp:0",
+        "Adapter": "adp:1",
     }
 
     experiment = Experiment(
