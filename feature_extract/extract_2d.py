@@ -51,13 +51,15 @@ class Args:
         self.metadata_path = '/mnt/NAS-TVS872XT/dataset/'
         self.root = self.metadata_path
         self.annotation_path = self.metadata_path
-        self.NUM_EPOCH = 4
+        self.NUM_EPOCH = 30
         self.FRAMES_PER_CLIP = 16
         self.STEP_BETWEEN_CLIPS = 16
         self.BATCH_SIZE = 32
         self.NUM_WORKERS = 32
         # self.CLIP_DURATION = 16 / 25
-        self.CLIP_DURATION = (8 * 8) / 30  # (num_frames * sampling_rate)/fps
+        # (num_frames * sampling_rate)/fps
+        self.kinetics_clip_duration = (8 * 8) / 30
+        self.ucf101_clip_duration = 16 / 25
         self.VIDEO_NUM_SUBSAMPLED = 8
         self.UCF101_NUM_CLASSES = 101
         self.KINETIC400_NUM_CLASSES = 400
@@ -161,7 +163,8 @@ class ReconstructNet(nn.Module):
         self.layer4 = model.layer4
         self.avgpool = model.avgpool
 
-        # self.adapter = Adapter(512)
+        self.adapter_0 = Adapter(512)
+        # self.adapter_1 = Adapter(1024)
 
         self.net_top = nn.Sequential(
             nn.Linear(model_num_features, num_class)
@@ -171,9 +174,12 @@ class ReconstructNet(nn.Module):
                                   num_frame=args.VIDEO_NUM_SUBSAMPLED)
 
         # 学習させるパラメータ名
-        self.update_param_names = ["adapter.bn1.weight", "adapter.bn1.bias",
-                                   "adapter.conv1.weight", "adapter.conv1.bias",
-                                   "adapter.bn2.weight", "adapter.bn2.bias",
+        self.update_param_names = ["adapter_0.bn1.weight", "adapter_0.bn1.bias",
+                                   "adapter_0.conv1.weight", "adapter_0.conv1.bias",
+                                   "adapter_0.bn2.weight", "adapter_0.bn2.bias",
+                                   "adapter_1.bn1.weight", "adapter_1.bn1.bias",
+                                   "adapter_1.conv1.weight", "adapter_1.conv1.bias",
+                                   "adapter_1.bn2.weight", "adapter_1.bn2.bias",
                                    "net_top.0.weight", "net_top.0.bias"]
         # 学習させるパラメータ以外は勾配計算をなくし、変化しないように設定
         for name, param in self.named_parameters():
@@ -187,8 +193,9 @@ class ReconstructNet(nn.Module):
         x = self.net_bottom(x)
         x = self.layer1(x)
         x = self.layer2(x)
-        # x = self.adapter(x)
+        x = self.adapter_0(x)
         x = self.layer3(x)
+        # x = self.adapter_1(x)
         x = self.layer4(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
@@ -243,6 +250,76 @@ def top1(outputs, targets):
     return predicted.eq(targets).sum().item() / batch_size
 
 
+def get_kinetics(subset):
+    """
+    Kinetics400のデータセットを取得
+
+    Args:
+        subset (str): "train" or "val" or "test"
+
+    Returns:
+        pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset: 取得したデータセット
+    """
+    args = Args()
+    train_transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.VIDEO_NUM_SUBSAMPLED),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                RandomShortSideScale(min_size=256, max_size=320,),
+                RandomCrop(224),
+                RandomHorizontalFlip(),
+            ]),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    val_transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.VIDEO_NUM_SUBSAMPLED),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                ShortSideScale(256),
+                CenterCrop(224),
+            ]),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    transform = val_transform if subset == "val" else train_transform
+
+    root_kinetics = '/mnt/dataset/Kinetics400/'
+
+    if subset == "test":
+        dataset = Kinetics(
+            data_path=root_kinetics + "test_list.txt",
+            video_path_prefix=root_kinetics + 'test/',
+            clip_sampler=RandomClipSampler(
+                clip_duration=args.kinetics_clip_duration),
+            video_sampler=RandomSampler,
+            decode_audio=False,
+            transform=transform,
+        )
+        return dataset
+    else:
+        dataset = Kinetics(
+            data_path=root_kinetics + subset,
+            video_path_prefix=root_kinetics + subset,
+            clip_sampler=RandomClipSampler(
+                clip_duration=args.kinetics_clip_duration),
+            video_sampler=RandomSampler,
+            decode_audio=False,
+            transform=transform,
+        )
+        return dataset
+
+    return False
+
+
 def get_ucf101(subset):
     """
     ucf101のデータセットを取得
@@ -253,12 +330,12 @@ def get_ucf101(subset):
     Returns:
         pytorchvideo.data.labeled_video_dataset.LabeledVideoDataset: 取得したデータセット
     """
-    subset_root_Ucf101 = 'ucfTrainTestlist/trainlist01.txt'
-    if subset == "test":
-        subset_root_Ucf101 = 'ucfTrainTestlist/testlist.txt'
+    subset_root_Ucf101 = 'ucfTrainTestlist/trainlist01.txt' if subset == "train" else 'ucfTrainTestlist/testlist.txt'
+    # if subset == "test":
+    #     subset_root_Ucf101 = 'ucfTrainTestlist/testlist.txt'
 
     args = Args()
-    transform = Compose([
+    train_transform = Compose([
         ApplyTransformToKey(
             key="video",
             transform=Compose([
@@ -277,13 +354,34 @@ def get_ucf101(subset):
         RemoveKey("audio"),
     ])
 
-    # root_ucf101 = '/mnt/dataset/UCF101/'
-    root_ucf101 = '/mnt/NAS-TVS872XT/dataset/UCF101/'
+    val_transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.VIDEO_NUM_SUBSAMPLED),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                ShortSideScale(256),
+                CenterCrop(224),
+            ]),
+        ),
+        ApplyTransformToKey(
+            key="label",
+            transform=transforms.Lambda(lambda x: x - 1),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    transform = train_transform if subset == "train" else val_transform
+
+    root_ucf101 = '/mnt/dataset/UCF101/'
+    # root_ucf101 = '/mnt/NAS-TVS872XT/dataset/UCF101/'
 
     dataset = Ucf101(
         data_path=root_ucf101 + subset_root_Ucf101,
         video_path_prefix=root_ucf101 + 'video/',
-        clip_sampler=RandomClipSampler(clip_duration=args.CLIP_DURATION),
+        clip_sampler=RandomClipSampler(
+            clip_duration=args.ucf101_clip_duration),
         video_sampler=RandomSampler,
         decode_audio=False,
         transform=transform,
@@ -312,15 +410,17 @@ def make_loader(dataset):
 
 def train():
     args = Args()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    dataset = get_ucf101("train")
-    train_loader = make_loader(dataset)
+    train_dataset = get_ucf101("train")
+    val_dataset = get_ucf101("val")
+    train_loader = make_loader(train_dataset)
+    val_loader = make_loader(val_dataset)
 
     model = ReconstructNet()
     model = model.to(device)
     # model = torch.nn.DataParallel(model)
-    # torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.benchmark = True
 
     optimizer = torch.optim.SGD(
         model.parameters(),
@@ -334,7 +434,7 @@ def train():
         "epoch": args.NUM_EPOCH,
         "batch_size": args.BATCH_SIZE,
         "num_frame": args.VIDEO_NUM_SUBSAMPLED,
-        "Adapter": "False",
+        "Adapter": "adp:0",
     }
 
     experiment = Experiment(
@@ -354,17 +454,20 @@ def train():
         for epoch in pbar_epoch:
             pbar_epoch.set_description("[Epoch %d]" % (epoch))
 
+            """Training mode"""
+
             train_loss = AverageMeter()
             train_acc = AverageMeter()
 
             with tqdm(enumerate(train_loader),
                       total=len(train_loader),
-                      leave=True) as pbar_batch:
+                      leave=True) as pbar_train_batch:
 
                 model.train()
 
-                for batch_idx, batch in pbar_batch:
-                    pbar_batch.set_description("[Epoch :{}]".format(epoch))
+                for batch_idx, batch in pbar_train_batch:
+                    pbar_train_batch.set_description(
+                        "[Epoch :{}]".format(epoch))
 
                     inputs = batch['video'].to(device)
                     labels = batch['label'].to(device)
@@ -380,8 +483,8 @@ def train():
                     train_loss.update(loss, bs)
                     train_acc.update(top1(outputs, labels), bs)
 
-                    pbar_batch.set_postfix_str(
-                        ' | loss={:6.04f} , top1={:6.04f}'
+                    pbar_train_batch.set_postfix_str(
+                        ' | loss_avg={:6.04f} , top1_avg={:6.04f}'
                         ' | batch_loss={:6.04f} , batch_top1={:6.04f}'
                         ''.format(
                             train_loss.avg, train_acc.avg,
@@ -392,15 +495,50 @@ def train():
                         "batch_accuracy", train_acc.val, step=step)
                     step += 1
 
+            """Val mode"""
+            model.eval()
+            val_loss = AverageMeter()
+            val_acc = AverageMeter()
+
+            with torch.no_grad():
+                for batch_idx, val_batch in enumerate(val_loader):
+                    inputs = val_batch['video'].to(device)
+                    labels = val_batch['label'].to(device)
+
+                    bs = inputs.size(0)
+
+                    val_outputs = model(inputs)
+                    loss = criterion(val_outputs, labels)
+
+                    val_loss.update(loss, bs)
+                    val_acc.update(top1(val_outputs, labels), bs)
+            """Finish Val mode"""
+
             pbar_epoch.set_postfix_str(
-                ' epoch_loss={:6.04f} , epoch_acc={:6.04f}'
-                ''.format(train_loss.avg, train_acc.avg)
+                ' train_loss={:6.04f} , val_loss={:6.04f}, train_acc={:6.04f}, val_acc={:6.04f}'
+                ''.format(
+                    train_loss.avg,
+                    val_loss.avg,
+                    train_acc.avg,
+                    val_loss.avg)
             )
 
-            experiment.log_metric(
-                "epoch_accuracy",
-                train_acc.avg,
-                step=epoch + 1)
+            # metrics = {"train_accuracy": train_acc.avg,
+            #            "val_accuracy": val_acc.avg
+            #            }
+            # experiment.log_multiple_metrics(metrics, epoch + 1)
+            experiment.log_metric("epoch_train_accuracy",
+                                  train_acc.avg,
+                                  step=epoch + 1)
+            experiment.log_metric("epoch_train_loss",
+                                  train_loss.avg,
+                                  step=epoch + 1)
+            experiment.log_metric("val_accuracy",
+                                  val_acc.avg,
+                                  step=epoch + 1)
+            experiment.log_metric("val_loss",
+                                  val_loss.avg,
+                                  step=epoch + 1)
 
 
 def main():
