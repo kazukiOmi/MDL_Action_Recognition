@@ -1,4 +1,5 @@
 
+from logging import shutdown
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -195,7 +196,8 @@ def make_loader(dataset):
     loader = DataLoader(LimitDataset(dataset),
                         batch_size=args.BATCH_SIZE,
                         drop_last=True,
-                        num_workers=args.NUM_WORKERS)
+                        num_workers=args.NUM_WORKERS,
+                        shuffle=True)
     return loader
 
 
