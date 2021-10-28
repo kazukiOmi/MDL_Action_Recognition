@@ -521,7 +521,7 @@ def train():
                     train_loss.avg,
                     val_loss.avg,
                     train_acc.avg,
-                    val_loss.avg)
+                    val_acc.avg)
             )
 
             # metrics = {"train_accuracy": train_acc.avg,
