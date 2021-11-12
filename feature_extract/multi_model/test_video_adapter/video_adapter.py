@@ -284,10 +284,65 @@ class ReconstructNetInAdapter(nn.Module):
                                    "adapter1.conv1.weight", "adapter1.conv1.bias",
                                    "adapter1.bn2.weight", "adapter1.bn2.bias",
                                    "linear.weight", "linear.bias"]
-        # self.update_param_names = ["adapter1.bn1.weight", "adapter1.bn1.bias",
-        #                            "adapter1.conv1.weight", "adapter1.conv1.bias",
-        #                            "adapter1.bn2.weight", "adapter1.bn2.bias",
-        #                            "linear.weight", "linear.bias"]
+        # 学習させるパラメータ以外は勾配計算をなくし、変化しないように設定
+        for name, param in self.named_parameters():
+            if name in self.update_param_names:
+                param.requires_grad = True
+                # print(name)
+            else:
+                param.requires_grad = False
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # x = x.permute(0,2,1,3,4)
+        x = self.net_bottom(x)
+        # x = self.adapter0(x)
+        x = self.blocks4(x)
+        x = self.adapter1(x)
+        x = self.net_top(x)
+        x = x.permute(0, 2, 3, 4, 1)
+        x = self.linear(x)
+        x = x.view(-1, self.num_class)
+        return x
+
+
+class ReconstructNetInAdapter2(nn.Module):
+    def __init__(self, adapter_mode):
+        super().__init__()
+        model = torch.hub.load(
+            'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
+        self.model_num_features = model.blocks[5].proj.in_features
+        self.num_class = 101
+        self.num_frame = 16
+
+        self.net_bottom = nn.Sequential(
+            model.blocks[0],
+            model.blocks[1],
+            model.blocks[2],
+            model.blocks[3],
+        )
+
+        # self.adapter0 = select_adapter(adapter_mode, 96, self.num_frame)
+
+        self.blocks4 = model.blocks[4]
+
+        self.adapter1 = select_adapter(adapter_mode, 192, self.num_frame)
+
+        self.net_top = nn.Sequential(
+            model.blocks[5].pool,
+            model.blocks[5].dropout
+        )
+
+        # self.linear = model.blocks[5].proj
+        self.linear = nn.Linear(self.model_num_features, self.num_class)
+
+        # 学習させるパラメータ名
+        self.update_param_names = ["adapter0.bn1.weight", "adapter0.bn1.bias",
+                                   "adapter0.conv1.weight", "adapter0.conv1.bias",
+                                   "adapter0.bn2.weight", "adapter0.bn2.bias",
+                                   "adapter1.bn1.weight", "adapter1.bn1.bias",
+                                   "adapter1.conv1.weight", "adapter1.conv1.bias",
+                                   "adapter1.bn2.weight", "adapter1.bn2.bias",
+                                   "linear.weight", "linear.bias"]
         # 学習させるパラメータ以外は勾配計算をなくし、変化しないように設定
         for name, param in self.named_parameters():
             if name in self.update_param_names:
@@ -546,7 +601,7 @@ def train_adapter(args):
         "learning late": lr,
         "weight decay": weight_decay,
         "mode": "train temporal adapter",
-        "Adapter": "adp:0, adp:1",
+        "Adapter": "adp:1",
     }
 
     experiment = Experiment(
@@ -668,10 +723,23 @@ def get_arguments():
     return parser.parse_args()
 
 
+def modelinfo(model):
+    torchinfo.summary(
+        model,
+        input_size=(1, 3, 16, 224, 224),
+        depth=8,
+        col_names=["input_size",
+                   "output_size"],
+        row_settings=("var_names",)
+    )
+
+
 def main():
-    config = configparser.ConfigParser()
+    # config = configparser.ConfigParser()
     args = get_arguments()
-    train_adapter(args)
+    # train_adapter(args)
+    model = ReconstructNetInAdapter2(args.adapter_mode)
+    modelinfo(model)
 
 
 if __name__ == '__main__':
