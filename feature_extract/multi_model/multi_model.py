@@ -15,7 +15,8 @@ from pytorchvideo.data import (
     RandomClipSampler,
     UniformClipSampler,
     Kinetics,
-    SSv2
+    SSv2,
+    kinetics
 )
 
 
@@ -52,6 +53,7 @@ from sklearn import decomposition
 import os.path as osp
 import argparse
 import configparser
+import time
 
 
 class Adapter2D(nn.Module):
@@ -435,7 +437,7 @@ def make_named_loader(dataset_name, subset, args):
     else:
         raise NameError("データセット名が正しくないです")
     loader = make_loader(dataset, args)
-    return enumerate(loader)
+    return loader
 
 
 def loader_list(dataset_list, args):
@@ -656,15 +658,31 @@ def get_arguments():
     return parser.parse_args()
 
 
+def test_batch_process():
+    args = get_arguments()
+    dataset_name_list = ["UCF101", "Kinetics400"]
+    train_loader_list, val_loader_list = loader_list(dataset_name_list, args)
+    loader_iters = []
+    for d in train_loader_list:
+        loader_iters.append(iter(d))
+
+    data_list = []
+    for i, loader in enumerate(loader_iters):
+        try:
+            data = next(loader)
+            data_list.append(data)
+        except StopIteration:
+            loader_iters[i] = iter(train_loader_list[i])
+            data = next(loader_iters[i])
+            data_list.append(data)
+    print(len(data_list))
+    print(data_list[0]["video"].shape)
+
+
 def main():
     # config = configparser.ConfigParser()
     args = get_arguments()
     dataset_name_list = ["UCF101", "Kinetics400"]
-    train_dict, val_dict = loader_dict(dataset_name_list, args)
-    for dataset_name in dataset_name_list:
-        # loader = train_dict[dataset_name]
-        # print(len(loader))
-        train_dict[dataset_name]
 
 
 if __name__ == '__main__':
