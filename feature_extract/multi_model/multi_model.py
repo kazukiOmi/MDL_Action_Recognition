@@ -235,7 +235,8 @@ class MyNet(nn.Module):
             self.model_num_features,
             self.ucf_num_class)
         self.linear_kinetics = model.blocks[5].proj
-        # self.linear_kinetics = nn.Linear(self.model_num_features, self.kinetics_num_class)
+        # self.linear_kinetics = nn.Linear(self.model_num_features,
+        # self.kinetics_num_class)
 
     def forward(self, x: torch.Tensor, domain) -> torch.Tensor:
         x = self.net_bottom(x)
@@ -495,11 +496,14 @@ def top1(outputs, targets):
     return predicted.eq(targets).sum().item() / batch_size
 
 
-def train_adapter(args):
+def train(args):
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
     dataset_name_list = ["UCF101", "Kinetics400"]
-    train_dict, val_dict = loader_dict(dataset_name_list, args)
+    train_loader_list, val_loader_list = loader_list(dataset_name_list, args)
+    loader_itr_list = []
+    for d in train_loader_list:
+        loader_itr_list.append(iter(d))
 
     model = MyNet(args.adapter_mode)
     model = model.to(device)
@@ -521,15 +525,15 @@ def train_adapter(args):
     criterion = nn.CrossEntropyLoss()
 
     hyper_params = {
-        "Dataset": "UCF101",
-        "epoch": args.epoch,
+        "Dataset": "UCF101, Kinetics",
+        # "epoch": args.epoch,
         "batch_size": args.batch_size,
         "num_frame": args.num_frame,
         "optimizer": "Adam(0.9, 0.999)",
         "learning late": lr,
         "weight decay": weight_decay,
-        "mode": "train temporal adapter",
-        "Adapter": "adp:1",
+        # "mode": args.adapter_mode,
+        # "Adapter": "adp:1",
     }
 
     experiment = Experiment(
@@ -542,89 +546,104 @@ def train_adapter(args):
     experiment.log_parameters(hyper_params)
 
     step = 0
-    best_acc = 0
+    # best_acc = 0
 
-    with tqdm(range(args.epoch)) as pbar_epoch:
-        for epoch in pbar_epoch:
-            pbar_epoch.set_description("[Epoch %d]" % (epoch))
+    num_iters = 100
+
+    train_acc_list = []
+    train_loss_list = []
+    val_acc_list = []
+    val_loss_list = []
+    for _ in dataset_name_list:
+        train_acc_list.append(AverageMeter)
+        train_loss_list.append(AverageMeter)
+        val_acc_list.append(AverageMeter)
+        val_loss_list.append(AverageMeter)
+
+    with tqdm(range(num_iters)) as pbar_itrs:
+        for itr in pbar_itrs:
+            pbar_itrs.set_description("[Iteration %d]" % (itr))
 
             """Training mode"""
 
-            train_loss = AverageMeter()
-            train_acc = AverageMeter()
-
             model.train()
-            for dataset_name in dataset_name_list:
-                loader
+            batch_list = []
+            for i, loader in enumerate(loader_itr_list):
+                try:
+                    batch = next(loader)
+                    batch_list.append(batch)
+                except StopIteration:
+                    loader_itr_list[i] = iter(train_loader_list[i])
+                    batch = next(loader_itr_list[i])
+                    batch_list.append(batch)
 
+            for i, batch in enumerate(batch_list):
                 inputs = batch['video'].to(device)
                 labels = batch['label'].to(device)
 
                 bs = inputs.size(0)
 
-                optimizer.zero_grad()
-                outputs = model(inputs)
+                if i == 0:
+                    optimizer.zero_grad()
+
+                outputs = model(inputs, dataset_name_list[i])
                 loss = criterion(outputs, labels)
                 loss.backward()
-                optimizer.step()
 
-                train_loss.update(loss, bs)
-                train_acc.update(top1(outputs, labels), bs)
+                if i == len(dataset_name_list) - 1:
+                    optimizer.step()
 
-                pbar_train_batch.set_postfix_str(
-                    ' | loss_avg={:6.04f} , top1_avg={:6.04f}'
-                    ' | batch_loss={:6.04f} , batch_top1={:6.04f}'
-                    ''.format(
-                        train_loss.avg, train_acc.avg,
-                        train_loss.val, train_acc.val,
-                    ))
+                train_loss_list[i].update(loss, bs)
+                train_acc_list[i].update(top1(outputs, labels), bs)
 
+            for name in dataset_name_list:
                 experiment.log_metric(
-                    "batch_accuracy", train_acc.val, step=step)
+                    "batch_accuracy_" + name, train_acc_list[i].val, step=step)
                 experiment.log_metric(
-                    "batch_loss", train_loss.val, step=step)
-                step += 1
+                    "batch_loss_" + name, train_loss_list[i].val, step=step)
+            step += 1
 
-            """Val mode"""
-            model.eval()
-            val_loss = AverageMeter()
-            val_acc = AverageMeter()
+            if itr == 300:
+                """Val mode"""
+                model.eval()
 
-            with torch.no_grad():
-                for batch_idx, val_batch in enumerate(val_loader):
-                    inputs = val_batch['video'].to(device)
-                    labels = val_batch['label'].to(device)
+                # val_acc_list = []
+                # val_loss_list = []
+                # for _ in dataset_name_list:
+                #     val_acc_list.append(AverageMeter)
+                #     val_loss_list.append(AverageMeter)
 
-                    bs = inputs.size(0)
+                with torch.no_grad():
+                    for loader in val_loader_list:
+                        for i, val_batch in enumerate(loader):
+                            inputs = val_batch['video'].to(device)
+                            labels = val_batch['label'].to(device)
 
-                    val_outputs = model(inputs)
-                    loss = criterion(val_outputs, labels)
+                            bs = inputs.size(0)
 
-                    val_loss.update(loss, bs)
-                    val_acc.update(top1(val_outputs, labels), bs)
-            """Finish Val mode"""
+                            val_outputs = model(inputs)
+                            loss = criterion(val_outputs, labels)
 
-            pbar_epoch.set_postfix_str(
-                ' train_loss={:6.04f} , val_loss={:6.04f}, train_acc={:6.04f}, val_acc={:6.04f}'
-                ''.format(
-                    train_loss.avg,
-                    val_loss.avg,
-                    train_acc.avg,
-                    val_acc.avg)
-            )
+                            val_loss_list[i].update(loss, bs)
+                            val_acc_list[i].update(
+                                top1(val_outputs, labels), bs)
 
-            experiment.log_metric("train_accuracy",
-                                  train_acc.avg,
-                                  step=epoch + 1)
-            experiment.log_metric("train_loss",
-                                  train_loss.avg,
-                                  step=epoch + 1)
-            experiment.log_metric("val_accuracy",
-                                  val_acc.avg,
-                                  step=epoch + 1)
-            experiment.log_metric("val_loss",
-                                  val_loss.avg,
-                                  step=epoch + 1)
+                for name in dataset_name_list:
+                    experiment.log_metric(
+                        "train_accuracy_" + name, train_acc_list[i].avg, step=step)
+                    experiment.log_metric(
+                        "train_loss_" + name, train_loss_list[i].avg, step=step)
+                    experiment.log_metric(
+                        "val_accuracy_" + name, val_acc_list[i].avg, step=step)
+                    experiment.log_metric(
+                        "val_loss_" + name, val_loss_list[i].avg, step=step)
+                    train_acc_list[i].reset()
+                    train_loss_list[i].reset()
+                    val_acc_list[i].reset()
+                    val_loss_list[i].reset()
+
+                """Finish Val mode"""
+                model.train()
 
     experiment.end()
 
@@ -682,7 +701,8 @@ def test_batch_process():
 def main():
     # config = configparser.ConfigParser()
     args = get_arguments()
-    dataset_name_list = ["UCF101", "Kinetics400"]
+    # dataset_name_list = ["UCF101", "Kinetics400"]
+    train(args)
 
 
 if __name__ == '__main__':
