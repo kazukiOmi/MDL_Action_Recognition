@@ -52,6 +52,8 @@ from sklearn import decomposition
 import os.path as osp
 import argparse
 import configparser
+import torch.onnx
+import netron
 
 
 class ReconstructNet(nn.Module):
@@ -140,6 +142,52 @@ class Adapter2D(nn.Module):
         out = self.frame_to_video(
             out, batch_size, num_frame, channel, height, height)
         # print(out.shape)
+
+        return out
+
+
+class ParallelAdapter2D(nn.Module):
+    def __init__(self, in_dim, out_dim):
+        super().__init__()
+        self.conv0 = nn.Conv3d(in_dim, out_dim, (1, 1, 1), stride=(1, 2, 2))
+        self.relu = nn.ReLU()
+        self.conv1 = nn.Conv2d(out_dim, out_dim, 1)
+        self.bn1 = nn.BatchNorm2d(out_dim)
+
+    def video_to_frame(self, inputs):
+        batch_size = inputs.size(0)
+        num_frame = inputs.size(2)
+
+        inputs = inputs.permute(0, 2, 1, 3, 4)
+        outputs = inputs.reshape(batch_size * num_frame,
+                                 inputs.size(2),
+                                 inputs.size(3),
+                                 inputs.size(4))
+
+        return outputs
+
+    def frame_to_video(
+            self, input: torch.Tensor, batch_size, num_frame, channel, height, width) -> torch.Tensor:
+        output = input.reshape(batch_size, num_frame, channel, height, width)
+        output = output.permute(0, 2, 1, 3, 4)
+        return output
+
+    def forward(self, x):
+        x = self.relu(self.conv0(x))
+
+        batch_size = x.size(0)
+        num_frame = x.size(2)
+        channel = x.size(1)
+        height = x.size(3)
+
+        x = self.video_to_frame(x)
+        residual = x
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out += residual
+
+        out = self.frame_to_video(
+            out, batch_size, num_frame, channel, height, height)
 
         return out
 
@@ -305,7 +353,7 @@ class ReconstructNetInAdapter(nn.Module):
         return x
 
 
-class ReconstructNetInAdapter2(nn.Module):
+class ReconstructNetInParallelAdapter(nn.Module):
     def __init__(self, adapter_mode):
         super().__init__()
         model = torch.hub.load(
@@ -313,6 +361,13 @@ class ReconstructNetInAdapter2(nn.Module):
         self.model_num_features = model.blocks[5].proj.in_features
         self.num_class = 101
         self.num_frame = 16
+
+        # mod_list = []
+        # for child in model.children():
+        #     for c in child.childen():
+        #         mod_list.append(c)
+        #         mod_list.append(my_adapter)
+        # self.adapter_net = nn.ModuleList(mod_list)
 
         self.net_bottom = nn.Sequential(
             model.blocks[0],
@@ -723,10 +778,12 @@ def get_arguments():
     return parser.parse_args()
 
 
-def modelinfo(model):
+def model_info(model):
     torchinfo.summary(
-        model,
-        input_size=(1, 3, 16, 224, 224),
+        # model,
+        # input_size=(1, 3, 16, 224, 224),
+        model.blocks[4].res_blocks[0],
+        input_size=(1, 96, 16, 14, 14),
         depth=8,
         col_names=["input_size",
                    "output_size"],
@@ -734,12 +791,31 @@ def modelinfo(model):
     )
 
 
+def save_onnx(model):
+    # input = torch.randn(1, 3, 16, 224, 224)
+    input = torch.randn(1, 96, 16, 14, 14)
+    input_names = ["input"]
+    output_names = ["output"]
+    torch.onnx.export(
+        model,
+        input,
+        "./x3d_m.onnx",
+        verbose=True,
+        input_names=input_names,
+        output_names=output_names)
+    # netron.start("./x3d_m.onnx")
+
+
 def main():
     # config = configparser.ConfigParser()
     args = get_arguments()
     # train_adapter(args)
-    model = ReconstructNetInAdapter2(args.adapter_mode)
-    modelinfo(model)
+    # model = ReconstructNetInParallelAdapter(args.adapter_mode)
+    # model = ParallelAdapter2D(96, 192)
+    # model_info(model)
+    model = torch.hub.load(
+        'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
+    model_info(model)
 
 
 if __name__ == '__main__':
