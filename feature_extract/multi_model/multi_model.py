@@ -2,7 +2,7 @@ from re import X
 from comet_ml import Experiment
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, dataset
 from torch.utils.data.dataloader import default_collate
 from torch.utils.data import DistributedSampler, RandomSampler, SequentialSampler
 
@@ -202,14 +202,14 @@ class EfficientSpaceTemporalAdapter(nn.Module):
         return out
 
 
-def select_adapter(adapter, channel_dim, frame_dim):
-    if adapter == "video2frame":
+def select_adapter(adp_mode, channel_dim, frame_dim):
+    if adp_mode == "video2frame":
         adp = Adapter2D(channel_dim)
-    elif adapter == "temporal":
+    elif adp_mode == "temporal":
         adp = TemporalAdapter(channel_dim, frame_dim)
-    elif adapter == "space_temporal":
+    elif adp_mode == "space_temporal":
         adp = SpaceTemporalAdapter(channel_dim, frame_dim)
-    elif adapter == "efficient_space_temporal":
+    elif adp_mode == "efficient_space_temporal":
         adp = EfficientSpaceTemporalAdapter(channel_dim, frame_dim)
     else:
         raise NameError("アダプタの名前が正しくないです．")
@@ -225,14 +225,23 @@ class MyHeadDict(nn.Module):
         x = self.head[domain](x)
         return x
 
+
 class MyAdapterDict(nn.Module):
-    def __init__(self):
+    def __init__(self, args, dim_index):
         super().__init__()
-        self.head = nn.ModuleDict({})
+        self.adapter = nn.ModuleDict({})
+
+        dim = args.dim_list[dim_index]
+        adp_dict = {}
+        for name in args.dataset_names:
+            adp = select_adapter(args.adp_mode, dim, args.num_frame)
+            adp_dict[name] = adp
+        self.adapter.update(adp_dict)
 
     def forward(self, x, domain):
-        x = self.head[domain](x)
+        x = self.adapter[domain](x)
         return x
+
 
 class MyNet(nn.Module):
     def __init__(self, args, config):
@@ -243,14 +252,15 @@ class MyNet(nn.Module):
         self.num_frame = args.num_frame
         self.class_dict = make_class_dict(args, config)
 
-        # dim_list = [24, 24, 48, 96, 112]
+        dim_index = 0
         mod_list = []
         for child in model.children():
             for g_child in child.children():
                 if isinstance(
                         g_child, pytorchvideo.models.head.ResNetBasicHead) == False:
                     mod_list.append(g_child)
-                    mod_list.append(TestAdapter())
+                    mod_list.append(MyAdapterDict(args, dim_index))
+                    dim_index += 1
                     # model_list.append()
 
         self.module_list = nn.ModuleList(mod_list)
@@ -268,7 +278,11 @@ class MyNet(nn.Module):
 
     def forward(self, x: torch.Tensor, domain) -> torch.Tensor:
         for f in self.module_list:
-            x = f(x)
+            if isinstance(f, MyAdapterDict):
+                x = f(x, domain)
+            else:
+                x = f(x)
+
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
         x = self.head_top_dict(x, domain)
@@ -554,7 +568,7 @@ def train(args, config):
         "optimizer": "Adam(0.9, 0.999)",
         "learning late": lr,
         "weight decay": weight_decay,
-        # "mode": args.adapter_mode,
+        "mode": args.adp_mode,
         # "Adapter": "adp:1",
     }
 
@@ -570,7 +584,7 @@ def train(args, config):
     step = 0
     # best_acc = 0
 
-    num_iters = 100
+    num_iters = 100000
 
     train_acc_list = []
     train_loss_list = []
@@ -625,7 +639,7 @@ def train(args, config):
                     "batch_loss_" + name, train_loss_list[i].val, step=step)
             step += 1
 
-            if (itr + 1) % 30 == 0:
+            if (itr + 1) % 500 == 0:
                 """Val mode"""
                 model.eval()
 
@@ -692,7 +706,7 @@ def get_arguments():
     parser.add_argument("--num_workers", type=int, default=32,)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--adapter_mode", type=str, choices=[
+    parser.add_argument("--adp_mode", type=str, choices=[
         "video2frame",
         "temporal",
         "space_temporal",
@@ -700,6 +714,7 @@ def get_arguments():
     parser.add_argument("--dataset_names",
                         nargs="*",
                         default=["UCF101", "Kinetics"])
+    parser.add_argument("--dim_list", nargs="*", default=[24, 24, 48, 96, 192])
     return parser.parse_args()
 
 
@@ -750,8 +765,10 @@ def main():
     config.read("config.ini")
     train(args, config)
     # device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-    # model = MyNet(args, config)
+    # model = MyAdapterDict(args.adp_mode, 96, args.dataset_names)
+    # print(model)
     # model_info(model)
+    # model = MyNet(args, config)
     # input = torch.randn(1, 3, 16, 224, 224)
     # input = torch.randn(1, 2048)
     # model = model.to(device)
