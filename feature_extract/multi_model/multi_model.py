@@ -216,6 +216,16 @@ def select_adapter(adapter, channel_dim, frame_dim):
     return adp
 
 
+class MyModuleDict(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.head = nn.ModuleDict({})
+
+    def forward(self, x, domain):
+        x = self.head[domain](x)
+        return x
+
+
 class MyNet(nn.Module):
     def __init__(self, args, config):
         super().__init__()
@@ -225,6 +235,7 @@ class MyNet(nn.Module):
         self.num_frame = args.num_frame
         self.class_dict = make_class_dict(args, config)
 
+        # dim_list = [24, 24, 48, 96, 112]
         mod_list = []
         for child in model.children():
             for g_child in child.children():
@@ -232,6 +243,7 @@ class MyNet(nn.Module):
                         g_child, pytorchvideo.models.head.ResNetBasicHead) == False:
                     mod_list.append(g_child)
                     mod_list.append(TestAdapter())
+                    # model_list.append()
 
         self.module_list = nn.ModuleList(mod_list)
         self.head_bottom = nn.Sequential(
@@ -243,16 +255,23 @@ class MyNet(nn.Module):
         for name in args.dataset_names:
             head = nn.Linear(self.dim_features, self.class_dict[name])
             head_dict[name] = head
-        self.head_top_dict = head_dict
+        self.head_top_dict = MyModuleDict()
+        self.head_top_dict.head.update(head_dict)
 
     def forward(self, x: torch.Tensor, domain) -> torch.Tensor:
         for f in self.module_list:
             x = f(x)
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
-        x = self.head_top_dict[domain](x)
+        x = self.head_top_dict(x, domain)
         x = x.view(-1, self.class_dict[domain])
         return x
+    # torchinfo用
+    # def forward(self, x: torch.Tensor) -> torch.Tensor:
+    #     for f in self.module_list:
+    #         x = f(x)
+    #     x = self.head_bottom(x)
+    #     return x
 
 
 def get_kinetics(subset, args):
@@ -491,16 +510,16 @@ def top1(outputs, targets):
     return predicted.eq(targets).sum().item() / batch_size
 
 
-def train(args):
+def train(args, config):
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
-    dataset_name_list = ["UCF101", "Kinetics"]
+    dataset_name_list = args.dataset_names
     train_loader_list, val_loader_list = loader_list(dataset_name_list, args)
     loader_itr_list = []
     for d in train_loader_list:
         loader_itr_list.append(iter(d))
 
-    model = MyNet(args.adapter_mode)
+    model = MyNet(args, config)
     model = model.to(device)
     # model = torch.nn.DataParallel(model)
     torch.backends.cudnn.benchmark = True
@@ -520,7 +539,7 @@ def train(args):
     criterion = nn.CrossEntropyLoss()
 
     hyper_params = {
-        "Dataset": "UCF101, Kinetics",
+        "Dataset": args.dataset_names,
         # "epoch": args.epoch,
         "batch_size": args.batch_size,
         "num_frame": args.num_frame,
@@ -721,12 +740,17 @@ def main():
     args = get_arguments()
     config = configparser.ConfigParser()
     config.read("config.ini")
-    # train(args)
+    # train(args, config)
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     model = MyNet(args, config)
+    # model = MyModuleDict()
     # model_info(model)
-    # adapter_test()
     input = torch.randn(1, 3, 16, 224, 224)
-    out = model(input, "UCF101")
+    # input = torch.randn(1, 2048)
+    model = model.to(device)
+    input = input.to(device)
+    # out = model(input, args.dataset_names[0])
+    out = model(input, "Kinetics")
     print(out.shape)
 
 
