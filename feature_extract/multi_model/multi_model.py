@@ -9,7 +9,7 @@ from torch.utils.data import DistributedSampler, RandomSampler, SequentialSample
 
 from torchvision import transforms
 
-
+import pytorchvideo
 from pytorchvideo.models import x3d
 from pytorchvideo.data import (
     Ucf101,
@@ -217,83 +217,41 @@ def select_adapter(adapter, channel_dim, frame_dim):
 
 
 class MyNet(nn.Module):
-    def __init__(self, adapter_mode):
+    def __init__(self, args, config):
         super().__init__()
         model = torch.hub.load(
             'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
-        self.model_num_features = model.blocks[5].proj.in_features
-        self.ucf_num_class = 101
-        self.kinetics_num_class = 400
-        self.num_frame = 16
-
-        self.net_bottom = nn.Sequential(
-            model.blocks[0],
-            model.blocks[1],
-            model.blocks[2],
-            model.blocks[3],
-        )
-
-        self.blocks4 = model.blocks[4]
-
-        self.adapter1_ucf = select_adapter(adapter_mode, 192, self.num_frame)
-        self.adapter1_kinetics = select_adapter(
-            adapter_mode, 192, self.num_frame)
-
-        self.net_top = nn.Sequential(
-            model.blocks[5].pool,
-            model.blocks[5].dropout
-        )
-
-        self.linear_ucf = nn.Linear(
-            self.model_num_features,
-            self.ucf_num_class)
-        self.linear_kinetics = model.blocks[5].proj
-        # self.linear_kinetics = nn.Linear(self.model_num_features,
-        # self.kinetics_num_class)
-
-    def forward(self, x: torch.Tensor, domain) -> torch.Tensor:
-        x = self.net_bottom(x)
-        x = self.blocks4(x)
-
-        if domain == "UCF101":
-            x = self.adapter1_ucf(x)
-        elif domain == "Kinetics":
-            x = self.adapter1_kinetics(x)
-
-        x = self.net_top(x)
-        x = x.permute(0, 2, 3, 4, 1)
-
-        if domain == "UCF101":
-            x = self.linear_ucf(x)
-            x = x.view(-1, self.ucf_num_class)
-        elif domain == "Kinetics":
-            x = self.linear_kinetics(x)
-            x = x.view(-1, self.kinetics_num_class)
-
-        return x
-
-
-class MyNet2(nn.Module):
-    def __init__(self):
-        super().__init__()
-        model = torch.hub.load(
-            'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
-        self.model_num_features = model.blocks[5].proj.in_features
-        self.ucf_num_class = 101
-        self.kinetics_num_class = 400
-        self.num_frame = 16
+        self.dim_features = model.blocks[5].proj.in_features
+        self.num_frame = args.num_frame
+        self.class_dict = make_class_dict(args, config)
 
         mod_list = []
         for child in model.children():
             for g_child in child.children():
-                mod_list.append(g_child)
-                mod_list.append(TestAdapter())
+                if isinstance(
+                        g_child, pytorchvideo.models.head.ResNetBasicHead) == False:
+                    mod_list.append(g_child)
+                    mod_list.append(TestAdapter())
 
-        self.net = nn.ModuleList(mod_list)
+        self.module_list = nn.ModuleList(mod_list)
+        self.head_bottom = nn.Sequential(
+            model.blocks[5].pool,
+            model.blocks[5].dropout
+        )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        for f in self.net:
+        head_dict = {}
+        for name in args.dataset_names:
+            head = nn.Linear(self.dim_features, self.class_dict[name])
+            head_dict[name] = head
+        self.head_top_dict = head_dict
+
+    def forward(self, x: torch.Tensor, domain) -> torch.Tensor:
+        for f in self.module_list:
             x = f(x)
+        x = self.head_bottom(x)
+        x = x.permute(0, 2, 3, 4, 1)
+        x = self.head_top_dict[domain](x)
+        x = x.view(-1, self.class_dict[domain])
         return x
 
 
@@ -739,22 +697,37 @@ def test_batch_process():
     print(data_list[0]["video"].shape)
 
 
-def model_test():
+def adapter_test():
     model = torch.hub.load(
         'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
     for child in model.children():
         for c in child.children():
-            print(c)
+            print(type(c))
+            if isinstance(
+                    c, pytorchvideo.models.head.ResNetBasicHead) == False:
+                print("Yes")
             print("------------------------------------------------------------")
 
 
+def make_class_dict(args, config):
+    config.read("config.ini")
+    num_class_dict = {}
+    for name in args.dataset_names:
+        num_class_dict[name] = int(config[name]["num_class"])
+    return num_class_dict
+
+
 def main():
-    # config = configparser.ConfigParser()
     args = get_arguments()
+    config = configparser.ConfigParser()
+    config.read("config.ini")
     # train(args)
-    model = MyNet2()
-    # print(model.net)
-    model_info(model)
+    model = MyNet(args, config)
+    # model_info(model)
+    # adapter_test()
+    input = torch.randn(1, 3, 16, 224, 224)
+    out = model(input, "UCF101")
+    print(out.shape)
 
 
 if __name__ == '__main__':
