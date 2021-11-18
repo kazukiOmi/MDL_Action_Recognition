@@ -216,7 +216,7 @@ def select_adapter(adapter, channel_dim, frame_dim):
     return adp
 
 
-class MyModuleDict(nn.Module):
+class MyHeadDict(nn.Module):
     def __init__(self):
         super().__init__()
         self.head = nn.ModuleDict({})
@@ -225,6 +225,14 @@ class MyModuleDict(nn.Module):
         x = self.head[domain](x)
         return x
 
+class MyAdapterDict(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.head = nn.ModuleDict({})
+
+    def forward(self, x, domain):
+        x = self.head[domain](x)
+        return x
 
 class MyNet(nn.Module):
     def __init__(self, args, config):
@@ -255,7 +263,7 @@ class MyNet(nn.Module):
         for name in args.dataset_names:
             head = nn.Linear(self.dim_features, self.class_dict[name])
             head_dict[name] = head
-        self.head_top_dict = MyModuleDict()
+        self.head_top_dict = MyHeadDict()
         self.head_top_dict.head.update(head_dict)
 
     def forward(self, x: torch.Tensor, domain) -> torch.Tensor:
@@ -740,18 +748,16 @@ def main():
     args = get_arguments()
     config = configparser.ConfigParser()
     config.read("config.ini")
-    # train(args, config)
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-    model = MyNet(args, config)
-    # model = MyModuleDict()
+    train(args, config)
+    # device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    # model = MyNet(args, config)
     # model_info(model)
-    input = torch.randn(1, 3, 16, 224, 224)
+    # input = torch.randn(1, 3, 16, 224, 224)
     # input = torch.randn(1, 2048)
-    model = model.to(device)
-    input = input.to(device)
+    # model = model.to(device)
+    # input = input.to(device)
     # out = model(input, args.dataset_names[0])
-    out = model(input, "Kinetics")
-    print(out.shape)
+    # print(out.shape)
 
 
 if __name__ == '__main__':
