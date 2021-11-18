@@ -1,3 +1,4 @@
+from re import X
 from comet_ml import Experiment
 import torch
 import torch.nn as nn
@@ -54,6 +55,18 @@ import os.path as osp
 import argparse
 import configparser
 import time
+
+
+class TestAdapter(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def ident(self, x):
+        return x
+
+    def forward(self, x):
+        x = self.ident(x)
+        return x
 
 
 class Adapter2D(nn.Module):
@@ -260,6 +273,30 @@ class MyNet(nn.Module):
         return x
 
 
+class MyNet2(nn.Module):
+    def __init__(self):
+        super().__init__()
+        model = torch.hub.load(
+            'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
+        self.model_num_features = model.blocks[5].proj.in_features
+        self.ucf_num_class = 101
+        self.kinetics_num_class = 400
+        self.num_frame = 16
+
+        mod_list = []
+        for child in model.children():
+            for g_child in child.children():
+                mod_list.append(g_child)
+                mod_list.append(TestAdapter())
+
+        self.net = nn.ModuleList(mod_list)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for f in self.net:
+            x = f(x)
+        return x
+
+
 def get_kinetics(subset, args):
     """
     Kinetics400のデータセットを取得
@@ -431,7 +468,7 @@ def make_loader(dataset, args):
 
 
 def make_named_loader(dataset_name, subset, args):
-    if dataset_name == "Kinetics400":
+    if dataset_name == "Kinetics":
         dataset = get_kinetics(subset, args)
     elif dataset_name == "UCF101":
         dataset = get_ucf101(subset, args)
@@ -499,7 +536,7 @@ def top1(outputs, targets):
 def train(args):
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
 
-    dataset_name_list = ["UCF101", "Kinetics400"]
+    dataset_name_list = ["UCF101", "Kinetics"]
     train_loader_list, val_loader_list = loader_list(dataset_name_list, args)
     loader_itr_list = []
     for d in train_loader_list:
@@ -555,10 +592,10 @@ def train(args):
     val_acc_list = []
     val_loss_list = []
     for _ in dataset_name_list:
-        train_acc_list.append(AverageMeter)
-        train_loss_list.append(AverageMeter)
-        val_acc_list.append(AverageMeter)
-        val_loss_list.append(AverageMeter)
+        train_acc_list.append(AverageMeter())
+        train_loss_list.append(AverageMeter())
+        val_acc_list.append(AverageMeter())
+        val_loss_list.append(AverageMeter())
 
     with tqdm(range(num_iters)) as pbar_itrs:
         for itr in pbar_itrs:
@@ -596,14 +633,14 @@ def train(args):
                 train_loss_list[i].update(loss, bs)
                 train_acc_list[i].update(top1(outputs, labels), bs)
 
-            for name in dataset_name_list:
+            for i, name in enumerate(dataset_name_list):
                 experiment.log_metric(
                     "batch_accuracy_" + name, train_acc_list[i].val, step=step)
                 experiment.log_metric(
                     "batch_loss_" + name, train_loss_list[i].val, step=step)
             step += 1
 
-            if itr == 300:
+            if (itr + 1) % 30 == 0:
                 """Val mode"""
                 model.eval()
 
@@ -614,33 +651,34 @@ def train(args):
                 #     val_loss_list.append(AverageMeter)
 
                 with torch.no_grad():
-                    for loader in val_loader_list:
-                        for i, val_batch in enumerate(loader):
+                    for i, loader in enumerate(val_loader_list):
+                        for val_batch in loader:
                             inputs = val_batch['video'].to(device)
                             labels = val_batch['label'].to(device)
 
                             bs = inputs.size(0)
 
-                            val_outputs = model(inputs)
+                            val_outputs = model(
+                                inputs, dataset_name_list[i])
                             loss = criterion(val_outputs, labels)
 
                             val_loss_list[i].update(loss, bs)
                             val_acc_list[i].update(
                                 top1(val_outputs, labels), bs)
 
-                for name in dataset_name_list:
-                    experiment.log_metric(
-                        "train_accuracy_" + name, train_acc_list[i].avg, step=step)
-                    experiment.log_metric(
-                        "train_loss_" + name, train_loss_list[i].avg, step=step)
-                    experiment.log_metric(
-                        "val_accuracy_" + name, val_acc_list[i].avg, step=step)
-                    experiment.log_metric(
-                        "val_loss_" + name, val_loss_list[i].avg, step=step)
-                    train_acc_list[i].reset()
-                    train_loss_list[i].reset()
-                    val_acc_list[i].reset()
-                    val_loss_list[i].reset()
+                    for i, name in enumerate(dataset_name_list):
+                        experiment.log_metric(
+                            "train_accuracy_" + name, train_acc_list[i].avg, step=step)
+                        experiment.log_metric(
+                            "train_loss_" + name, train_loss_list[i].avg, step=step)
+                        experiment.log_metric(
+                            "val_accuracy_" + name, val_acc_list[i].avg, step=step)
+                        experiment.log_metric(
+                            "val_loss_" + name, val_loss_list[i].avg, step=step)
+                        train_acc_list[i].reset()
+                        train_loss_list[i].reset()
+                        val_acc_list[i].reset()
+                        val_loss_list[i].reset()
 
                 """Finish Val mode"""
                 model.train()
@@ -650,11 +688,11 @@ def train(args):
 
 def model_info(model):
     torchinfo.summary(
-        # model,
-        # input_size=(1, 3, 16, 224, 224),
-        model.blocks[4].res_blocks[0],
-        input_size=(1, 96, 16, 14, 14),
-        depth=8,
+        model,
+        input_size=(1, 3, 16, 224, 224),
+        # model.blocks[4].res_blocks[0],
+        # input_size=(1, 96, 16, 14, 14),
+        depth=4,
         col_names=["input_size",
                    "output_size"],
         row_settings=("var_names",)
@@ -674,12 +712,15 @@ def get_arguments():
         "temporal",
         "space_temporal",
         "efficient_space_temporal"])
+    parser.add_argument("--dataset_names",
+                        nargs="*",
+                        default=["UCF101", "Kinetics"])
     return parser.parse_args()
 
 
 def test_batch_process():
     args = get_arguments()
-    dataset_name_list = ["UCF101", "Kinetics400"]
+    dataset_name_list = ["UCF101", "Kinetics"]
     train_loader_list, val_loader_list = loader_list(dataset_name_list, args)
     loader_iters = []
     for d in train_loader_list:
@@ -698,11 +739,22 @@ def test_batch_process():
     print(data_list[0]["video"].shape)
 
 
+def model_test():
+    model = torch.hub.load(
+        'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
+    for child in model.children():
+        for c in child.children():
+            print(c)
+            print("------------------------------------------------------------")
+
+
 def main():
     # config = configparser.ConfigParser()
     args = get_arguments()
-    # dataset_name_list = ["UCF101", "Kinetics400"]
-    train(args)
+    # train(args)
+    model = MyNet2()
+    # print(model.net)
+    model_info(model)
 
 
 if __name__ == '__main__':
