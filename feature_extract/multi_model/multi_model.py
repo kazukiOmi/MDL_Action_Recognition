@@ -217,9 +217,15 @@ def select_adapter(adp_mode, channel_dim, frame_dim):
 
 
 class MyHeadDict(nn.Module):
-    def __init__(self):
+    def __init__(self, in_channel, dataset_names, class_dict):
         super().__init__()
         self.head = nn.ModuleDict({})
+
+        head_dict = {}
+        for name in dataset_names:
+            head = nn.Linear(in_channel, class_dict[name])
+            head_dict[name] = head
+        self.head.update(head_dict)
 
     def forward(self, x, domain):
         x = self.head[domain](x)
@@ -269,12 +275,9 @@ class MyNet(nn.Module):
             model.blocks[5].dropout
         )
 
-        head_dict = {}
-        for name in args.dataset_names:
-            head = nn.Linear(self.dim_features, self.class_dict[name])
-            head_dict[name] = head
-        self.head_top_dict = MyHeadDict()
-        self.head_top_dict.head.update(head_dict)
+        self.head_top_dict = MyHeadDict(self.dim_features,
+                                        args.dataset_names,
+                                        self.class_dict)
 
     def forward(self, x: torch.Tensor, domain) -> torch.Tensor:
         for f in self.module_list:
@@ -282,18 +285,15 @@ class MyNet(nn.Module):
                 x = f(x, domain)
             else:
                 x = f(x)
+            # torchinfoで確認できないので確認用
+            # print(type(f))
+            # print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
         x = self.head_top_dict(x, domain)
         x = x.view(-1, self.class_dict[domain])
         return x
-    # torchinfo用
-    # def forward(self, x: torch.Tensor) -> torch.Tensor:
-    #     for f in self.module_list:
-    #         x = f(x)
-    #     x = self.head_bottom(x)
-    #     return x
 
 
 def get_kinetics(subset, args):
@@ -584,7 +584,7 @@ def train(args, config):
     step = 0
     # best_acc = 0
 
-    num_iters = 100000
+    num_iters = 5000
 
     train_acc_list = []
     train_loss_list = []
@@ -613,24 +613,21 @@ def train(args, config):
                     batch = next(loader_itr_list[i])
                     batch_list.append(batch)
 
+            optimizer.zero_grad()
             for i, batch in enumerate(batch_list):
                 inputs = batch['video'].to(device)
                 labels = batch['label'].to(device)
 
                 bs = inputs.size(0)
 
-                if i == 0:
-                    optimizer.zero_grad()
-
                 outputs = model(inputs, dataset_name_list[i])
                 loss = criterion(outputs, labels)
                 loss.backward()
 
-                if i == len(dataset_name_list) - 1:
-                    optimizer.step()
-
                 train_loss_list[i].update(loss, bs)
                 train_acc_list[i].update(top1(outputs, labels), bs)
+
+            optimizer.step()
 
             for i, name in enumerate(dataset_name_list):
                 experiment.log_metric(
@@ -642,12 +639,6 @@ def train(args, config):
             if (itr + 1) % 500 == 0:
                 """Val mode"""
                 model.eval()
-
-                # val_acc_list = []
-                # val_loss_list = []
-                # for _ in dataset_name_list:
-                #     val_acc_list.append(AverageMeter)
-                #     val_loss_list.append(AverageMeter)
 
                 with torch.no_grad():
                     for i, loader in enumerate(val_loader_list):
@@ -763,18 +754,18 @@ def main():
     args = get_arguments()
     config = configparser.ConfigParser()
     config.read("config.ini")
-    train(args, config)
-    # device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    # train(args, config)
     # model = MyAdapterDict(args.adp_mode, 96, args.dataset_names)
     # print(model)
     # model_info(model)
-    # model = MyNet(args, config)
-    # input = torch.randn(1, 3, 16, 224, 224)
+    model = MyNet(args, config)
+    input = torch.randn(1, 3, 16, 224, 224)
     # input = torch.randn(1, 2048)
-    # model = model.to(device)
-    # input = input.to(device)
-    # out = model(input, args.dataset_names[0])
-    # print(out.shape)
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    input = input.to(device)
+    out = model(input, args.dataset_names[1])
+    print(out.shape)
 
 
 if __name__ == '__main__':
