@@ -233,11 +233,10 @@ class MyHeadDict(nn.Module):
 
 
 class MyAdapterDict(nn.Module):
-    def __init__(self, args, dim_index):
+    def __init__(self, args, dim):
         super().__init__()
         self.adapter = nn.ModuleDict({})
 
-        dim = args.dim_list[dim_index]
         adp_dict = {}
         for name in args.dataset_names:
             adp = select_adapter(args.adp_mode, dim, args.num_frame)
@@ -249,25 +248,76 @@ class MyAdapterDict(nn.Module):
         return x
 
 
-class MyNet(nn.Module):
-    def __init__(self, args, config):
-        super().__init__()
-        model = torch.hub.load(
-            'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
-        self.dim_features = model.blocks[5].proj.in_features
-        self.num_frame = args.num_frame
-        self.class_dict = make_class_dict(args, config)
-
-        dim_index = 0
-        mod_list = []
+def make_mod_list(model, args):
+    mod_list = []
+    dim_list = args.dim_list
+    dim_index = 0
+    if args.adp_where == "stages":
         for child in model.children():
             for g_child in child.children():
                 if isinstance(
                         g_child, pytorchvideo.models.head.ResNetBasicHead) == False:
                     mod_list.append(g_child)
-                    mod_list.append(MyAdapterDict(args, dim_index))
+                    mod_list.append(MyAdapterDict(args, dim_list[dim_index]))
                     dim_index += 1
-                    # model_list.append()
+    elif args.adp_where == "all":
+        for child in model.children():
+            for c in child.children():
+                if isinstance(c, pytorchvideo.models.stem.ResNetBasicStem):
+                    mod_list.append(c)
+                    mod_list.append(MyAdapterDict(args, dim_list[dim_index]))
+                    dim_index += 1
+                elif isinstance(c, pytorchvideo.models.head.ResNetBasicHead):
+                    pass
+                elif isinstance(c, pytorchvideo.models.resnet.ResStage):
+                    g = c.children()
+                    for g_c in g:
+                        for i, g_g in enumerate(g_c):
+                            mod_list.append(g_g)
+                            mod_list.append(MyAdapterDict(
+                                args, dim_list[dim_index]))
+                            # if i != len(g_c):
+                            #     mod_list.append(MyAdapterDict(
+                            #         args, dim_list[dim_index]))
+                            # else:
+                            #     mod_list.append(MyAdapterDict(
+                            #         args, dim_list[dim_index+1]))
+                    dim_index += 1
+                else:
+                    raise NameError("ModuleListの作成に失敗．")
+    elif args.adp_where == "blocks":
+        for child in model.children():
+            for c in child.children():
+                if isinstance(c, pytorchvideo.models.stem.ResNetBasicStem):
+                    mod_list.append(c)
+                elif isinstance(c, pytorchvideo.models.head.ResNetBasicHead):
+                    pass
+                elif isinstance(c, pytorchvideo.models.resnet.ResStage):
+                    g = c.children()
+                    for g_c in g:
+                        for i, g_g in enumerate(g_c):
+                            mod_list.append(g_g)
+                            if i != len(g_c) - 1:
+                                mod_list.append(MyAdapterDict(
+                                    args, dim_list[dim_index+1]))
+                    dim_index += 1
+                else:
+                    raise NameError("ModuleListの作成に失敗．")
+    else:
+        raise NameError("adp_wehreが該当しません．")
+    return mod_list
+
+
+class MyNet(nn.Module):
+    def __init__(self, args, config):
+        super().__init__()
+        model = torch.hub.load(
+            'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.pretrained)
+        self.dim_features = model.blocks[5].proj.in_features
+        self.num_frame = args.num_frame
+        self.class_dict = make_class_dict(args, config)
+
+        mod_list = make_mod_list(model, args)
 
         self.module_list = nn.ModuleList(mod_list)
         self.head_bottom = nn.Sequential(
@@ -279,6 +329,9 @@ class MyNet(nn.Module):
                                         args.dataset_names,
                                         self.class_dict)
 
+        # for name, param in self.named_parameters():
+        #     print(name)
+
     def forward(self, x: torch.Tensor, domain) -> torch.Tensor:
         for f in self.module_list:
             if isinstance(f, MyAdapterDict):
@@ -286,8 +339,8 @@ class MyNet(nn.Module):
             else:
                 x = f(x)
             # torchinfoで確認できないので確認用
-            # print(type(f))
-            # print(x.shape)
+            print(type(f))
+            print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
@@ -569,6 +622,7 @@ def train(args, config):
         "learning late": lr,
         "weight decay": weight_decay,
         "mode": args.adp_mode,
+        "pretrained": "False",
         # "Adapter": "adp:1",
     }
 
@@ -584,7 +638,7 @@ def train(args, config):
     step = 0
     # best_acc = 0
 
-    num_iters = 5000
+    num_iters = args.iteration
 
     train_acc_list = []
     train_loss_list = []
@@ -691,19 +745,19 @@ def model_info(model):
 
 def get_arguments():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--iteration", type=int, default=10000,)
     parser.add_argument("--epoch", type=int, default=10,)
     parser.add_argument("--batch_size", type=int, default=32,)
     parser.add_argument("--num_frame", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=32,)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
-    parser.add_argument("--adp_mode", type=str, choices=[
-        "video2frame",
-        "temporal",
-        "space_temporal",
-        "efficient_space_temporal"])
-    parser.add_argument("--dataset_names",
-                        nargs="*",
+    parser.add_argument("--pretrained", type=str, default="True",)
+    parser.add_argument("--adp_where", type=str, default="stages",
+                        choices=["stages", "blocks", "all"])
+    parser.add_argument("--adp_mode", type=str, default="temporal",
+                        choices=["video2frame", "temporal", "space_temporal", "efficient_space_temporal"])
+    parser.add_argument("--dataset_names", nargs="*",
                         default=["UCF101", "Kinetics"])
     parser.add_argument("--dim_list", nargs="*", default=[24, 24, 48, 96, 192])
     return parser.parse_args()
@@ -733,13 +787,60 @@ def test_batch_process():
 def adapter_test():
     model = torch.hub.load(
         'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
+
+    """add adapter between all"""
+    # for child in model.children():
+    #     for c in child.children():
+    #         # print(type(c))
+    #         if isinstance(c, pytorchvideo.models.stem.ResNetBasicStem):
+    #             print(type(c))
+    #             print("add adp")
+    #             # print("-------------------------------------------------------")
+    #         elif isinstance(c, pytorchvideo.models.head.ResNetBasicHead):
+    #             print(type(c))
+    #             # print("-------------------------------------------------------")
+    #         elif isinstance(c, pytorchvideo.models.resnet.ResStage):
+    #             g = c.children()
+    #             print(type(g))
+    #             for g_c in g:
+    #                 for g_g in g_c:
+    #                     print(type(g_c))
+    #                     print("add adp")
+    #                     # print("------------------------------------------------------")
+    #         else:
+    #             raise NameError("例外．")
+    #         print("------------------------------------------------------")
+
+    """add adapter between stage and stage"""
+    # for child in model.children():
+    #     for c in child.children():
+    #         print(type(c))
+    #         if isinstance(
+    #                 c, pytorchvideo.models.head.ResNetBasicHead) == False:
+    #             print("add adp")
+    #         print("-------------------------------------------------------")
+
+    """add adapter between block and block"""
     for child in model.children():
         for c in child.children():
-            print(type(c))
-            if isinstance(
-                    c, pytorchvideo.models.head.ResNetBasicHead) == False:
-                print("Yes")
-            print("------------------------------------------------------------")
+            # print(type(c))
+            if isinstance(c, pytorchvideo.models.stem.ResNetBasicStem):
+                print(type(c))
+                # print("-------------------------------------------------------")
+            elif isinstance(c, pytorchvideo.models.head.ResNetBasicHead):
+                print(type(c))
+                # print("-------------------------------------------------------")
+            elif isinstance(c, pytorchvideo.models.resnet.ResStage):
+                g = c.children()
+                for g_c in g:
+                    for i, g_g in enumerate(g_c):
+                        print(type(g_c))
+                        if i != len(g_c) - 1:
+                            print("add adp")
+                            # print("------------------------------------------------------")
+            else:
+                raise NameError("例外．")
+            print("------------------------------------------------------")
 
 
 def make_class_dict(args, config):
@@ -754,18 +855,27 @@ def main():
     args = get_arguments()
     config = configparser.ConfigParser()
     config.read("config.ini")
+    """train"""
     # train(args, config)
+
+    """model check (torchinfo)"""
     # model = MyAdapterDict(args.adp_mode, 96, args.dataset_names)
+    # model = torch.hub.load(
+    #     'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.pretrained)
     # print(model)
     # model_info(model)
+
+    """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
     model = MyNet(args, config)
     input = torch.randn(1, 3, 16, 224, 224)
     # input = torch.randn(1, 2048)
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
     input = input.to(device)
-    out = model(input, args.dataset_names[1])
+    out = model(input, args.dataset_names[0])
     print(out.shape)
+
+    # adapter_test()
 
 
 if __name__ == '__main__':
