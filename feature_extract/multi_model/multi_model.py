@@ -276,12 +276,6 @@ def make_mod_list(model, args):
                             mod_list.append(g_g)
                             mod_list.append(MyAdapterDict(
                                 args, dim_list[dim_index]))
-                            # if i != len(g_c):
-                            #     mod_list.append(MyAdapterDict(
-                            #         args, dim_list[dim_index]))
-                            # else:
-                            #     mod_list.append(MyAdapterDict(
-                            #         args, dim_list[dim_index+1]))
                     dim_index += 1
                 else:
                     raise NameError("ModuleListの作成に失敗．")
@@ -616,12 +610,14 @@ def train(args, config):
     hyper_params = {
         "Dataset": args.dataset_names,
         # "epoch": args.epoch,
+        "Iteration": args.iteration,
         "batch_size": args.batch_size,
-        "num_frame": args.num_frame,
+        # "num_frame": args.num_frame,
         "optimizer": "Adam(0.9, 0.999)",
         "learning late": lr,
         "weight decay": weight_decay,
         "mode": args.adp_mode,
+        "adp place": args.adp_where,
         "pretrained": "False",
         # "Adapter": "adp:1",
     }
@@ -784,65 +780,6 @@ def test_batch_process():
     print(data_list[0]["video"].shape)
 
 
-def adapter_test():
-    model = torch.hub.load(
-        'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
-
-    """add adapter between all"""
-    # for child in model.children():
-    #     for c in child.children():
-    #         # print(type(c))
-    #         if isinstance(c, pytorchvideo.models.stem.ResNetBasicStem):
-    #             print(type(c))
-    #             print("add adp")
-    #             # print("-------------------------------------------------------")
-    #         elif isinstance(c, pytorchvideo.models.head.ResNetBasicHead):
-    #             print(type(c))
-    #             # print("-------------------------------------------------------")
-    #         elif isinstance(c, pytorchvideo.models.resnet.ResStage):
-    #             g = c.children()
-    #             print(type(g))
-    #             for g_c in g:
-    #                 for g_g in g_c:
-    #                     print(type(g_c))
-    #                     print("add adp")
-    #                     # print("------------------------------------------------------")
-    #         else:
-    #             raise NameError("例外．")
-    #         print("------------------------------------------------------")
-
-    """add adapter between stage and stage"""
-    # for child in model.children():
-    #     for c in child.children():
-    #         print(type(c))
-    #         if isinstance(
-    #                 c, pytorchvideo.models.head.ResNetBasicHead) == False:
-    #             print("add adp")
-    #         print("-------------------------------------------------------")
-
-    """add adapter between block and block"""
-    for child in model.children():
-        for c in child.children():
-            # print(type(c))
-            if isinstance(c, pytorchvideo.models.stem.ResNetBasicStem):
-                print(type(c))
-                # print("-------------------------------------------------------")
-            elif isinstance(c, pytorchvideo.models.head.ResNetBasicHead):
-                print(type(c))
-                # print("-------------------------------------------------------")
-            elif isinstance(c, pytorchvideo.models.resnet.ResStage):
-                g = c.children()
-                for g_c in g:
-                    for i, g_g in enumerate(g_c):
-                        print(type(g_c))
-                        if i != len(g_c) - 1:
-                            print("add adp")
-                            # print("------------------------------------------------------")
-            else:
-                raise NameError("例外．")
-            print("------------------------------------------------------")
-
-
 def make_class_dict(args, config):
     config.read("config.ini")
     num_class_dict = {}
@@ -874,8 +811,6 @@ def main():
     input = input.to(device)
     out = model(input, args.dataset_names[0])
     print(out.shape)
-
-    # adapter_test()
 
 
 if __name__ == '__main__':
