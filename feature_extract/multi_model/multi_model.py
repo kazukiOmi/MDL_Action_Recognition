@@ -297,6 +297,12 @@ def make_mod_list(model, args):
                     dim_index += 1
                 else:
                     raise NameError("ModuleListの作成に失敗．")
+    elif args.adp_where == "No":
+        for child in model.children():
+            for g_child in child.children():
+                if isinstance(
+                        g_child, pytorchvideo.models.head.ResNetBasicHead) == False:
+                    mod_list.append(g_child)
     else:
         raise NameError("adp_wehreが該当しません．")
     return mod_list
@@ -495,7 +501,7 @@ class LimitDataset(torch.utils.data.Dataset):
         return self.dataset.num_videos
 
 
-def make_loader(dataset, args):
+def make_loader(dataset, args, batch_size):
     """
     データローダーを作成
 
@@ -506,32 +512,36 @@ def make_loader(dataset, args):
         torch.utils.data.DataLoader: 取得したデータローダー
     """
     loader = DataLoader(LimitDataset(dataset),
-                        batch_size=args.batch_size,
+                        batch_size=batch_size,
                         drop_last=True,
                         num_workers=args.num_workers,
                         shuffle=True)
     return loader
 
 
-def make_named_loader(dataset_name, subset, args):
+def make_named_loader(dataset_name, subset, args, batch_size):
     if dataset_name == "Kinetics":
         dataset = get_kinetics(subset, args)
     elif dataset_name == "UCF101":
         dataset = get_ucf101(subset, args)
     else:
         raise NameError("データセット名が正しくないです")
-    loader = make_loader(dataset, args)
+    loader = make_loader(dataset, args, batch_size)
     return loader
 
 
-def loader_list(dataset_list, args):
+def loader_list(args):
     train_loader_list = []
     val_loader_list = []
+    dataset_list = args.dataset_names
+    batch_size_dict = dict(
+        zip(args.dataset_names, list(map(int, args.batch_size_list))))
     for dataset_name in dataset_list:
         train_loader_list.append(
             make_named_loader(
-                dataset_name, "train", args))
-        val_loader_list.append(make_named_loader(dataset_name, "val", args))
+                dataset_name, "train", args, batch_size_dict[dataset_name]))
+        val_loader_list.append(make_named_loader(
+            dataset_name, "val", args, batch_size_dict[dataset_name]))
     return train_loader_list, val_loader_list
 
 
@@ -583,7 +593,7 @@ def train(args, config):
     device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
 
     dataset_name_list = args.dataset_names
-    train_loader_list, val_loader_list = loader_list(dataset_name_list, args)
+    train_loader_list, val_loader_list = loader_list(args)
     loader_itr_list = []
     for d in train_loader_list:
         loader_itr_list.append(iter(d))
@@ -609,17 +619,14 @@ def train(args, config):
 
     hyper_params = {
         "Dataset": args.dataset_names,
-        # "epoch": args.epoch,
         "Iteration": args.iteration,
         "batch_size": args.batch_size,
-        # "num_frame": args.num_frame,
         "optimizer": "Adam(0.9, 0.999)",
         "learning late": lr,
         "weight decay": weight_decay,
         "mode": args.adp_mode,
         "adp place": args.adp_where,
         "pretrained": args.pretrained,
-        # "Adapter": "adp:1",
     }
 
     experiment = Experiment(
@@ -741,16 +748,17 @@ def model_info(model):
 
 def get_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--iteration", type=int, default=500000,)
+    parser.add_argument("--iteration", type=int, default=50000,)
     parser.add_argument("--epoch", type=int, default=10,)
-    parser.add_argument("--batch_size", type=int, default=16,)
+    parser.add_argument("--batch_size", type=int, default=32,)
+    parser.add_argument("--batch_size_list", nargs="*", default=[32, 32])
     parser.add_argument("--num_frame", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=32,)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--pretrained", type=str, default="True",)
     parser.add_argument("--adp_where", type=str, default="stages",
-                        choices=["stages", "blocks", "all"])
+                        choices=["stages", "blocks", "all", "No"])
     parser.add_argument("--adp_mode", type=str, default="temporal",
                         choices=["video2frame", "temporal", "space_temporal", "efficient_space_temporal"])
     parser.add_argument("--dataset_names", nargs="*",
@@ -810,8 +818,14 @@ def main():
     # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
     # model = model.to(device)
     # input = input.to(device)
-    # out = model(input, args.dataset_names[0])
+    # out = model(input, args.dataset_names[1])
     # print(out.shape)
+
+    # train_loader_list, val_loader_list = loader_list(args)
+    # print(train_loader_list[0])
+    # print(train_loader_list[1])
+    # print(type(train_loader_list[0]))
+    # print(len(train_loader_list[0]))
 
 
 if __name__ == '__main__':
