@@ -70,12 +70,14 @@ class TestAdapter(nn.Module):
 
 
 class Adapter2D(nn.Module):
-    def __init__(self, channel, height, use_relu=True):
+    def __init__(self, feature_list, frame, use_relu=True):
         super().__init__()
+        channel = feature_list[0]
+        height = feature_list[1]
 
         self.conv1 = nn.Conv2d(channel, channel, 1)
         # TODO normalize with C,T,H,W
-        self.norm1 = nn.LayerNorm([channel, height, height])
+        self.norm1 = nn.LayerNorm([channel, frame, height, height])
         if use_relu:
             self.act = nn.ReLU()
         else:
@@ -117,8 +119,8 @@ class Adapter2D(nn.Module):
         out = self.video_to_frame(x)
         out = self.conv1(out)
         # out = nn.LayerNorm([channel, height, width])(out)
-        out = self.norm1(out)
         out = self.frame_to_video(out, batch_size)
+        out = self.norm1(out)
 
         out += x
         out = self.act(out)
@@ -127,10 +129,12 @@ class Adapter2D(nn.Module):
 
 
 class TemporalAdapter(nn.Module):
-    def __init__(self, channel_dim, frame, height, use_relu=True):
+    def __init__(self, feature_list, frame, use_relu=True):
         super().__init__()
+        channel = feature_list[0]
+        height = feature_list[1]
         self.conv1 = nn.Conv2d(frame, frame, 1)
-        self.norm1 = nn.LayerNorm([frame, height, height])
+        self.norm1 = nn.LayerNorm([channel, frame, height, height])
 
         if use_relu:
             self.act = nn.ReLU()
@@ -158,8 +162,8 @@ class TemporalAdapter(nn.Module):
 
         out = self.swap_channel_frame(x)  # B,C,T,H,W --> BC,T,H,W
         out = self.conv1(out)
-        out = self.norm1(out)
         out = self.frame_to_video(out, batch_size)  # BC,T,H,W --> B,C,T,H,W
+        out = self.norm1(out)
 
         out += x
         out = self.act(out)
@@ -168,8 +172,10 @@ class TemporalAdapter(nn.Module):
 
 
 class SpaceTemporalAdapter(nn.Module):
-    def __init__(self, channel, frame, height, use_relu=True):
+    def __init__(self, feature_list, frame, use_relu=True):
         super().__init__()
+        channel = feature_list[0]
+        height = feature_list[1]
         self.conv1 = nn.Conv3d(channel, channel * frame, (frame, 1, 1))
         self.norm1 = nn.LayerNorm([channel, frame, height, height])
         if use_relu:
@@ -201,10 +207,10 @@ class SpaceTemporalAdapter(nn.Module):
 
 
 class EfficientSpaceTemporalAdapter(nn.Module):
-    def __init__(self, channel, frame):
+    def __init__(self, feature_list, frame):
         super().__init__()
-        self.video2frame_adapter = Adapter2D(channel)
-        self.temporal_adapter = TemporalAdapter(channel, frame)
+        self.video2frame_adapter = Adapter2D(feature_list, frame)
+        self.temporal_adapter = TemporalAdapter(feature_list, frame)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -214,15 +220,15 @@ class EfficientSpaceTemporalAdapter(nn.Module):
         return out
 
 
-def select_adapter(adp_mode, channel, frame, height):
+def select_adapter(adp_mode, feature_list, frame):
     if adp_mode == "video2frame":
-        adp = Adapter2D(channel, height)
+        adp = Adapter2D(feature_list, frame)
     elif adp_mode == "temporal":
-        adp = TemporalAdapter(channel, frame, height)
+        adp = TemporalAdapter(feature_list, frame)
     elif adp_mode == "space_temporal":
-        adp = SpaceTemporalAdapter(channel, frame, height)
+        adp = SpaceTemporalAdapter(feature_list, frame)
     elif adp_mode == "efficient_space_temporal":
-        adp = EfficientSpaceTemporalAdapter(channel, frame, height)
+        adp = EfficientSpaceTemporalAdapter(feature_list, frame)
     else:
         raise NameError("invalide adapter name")
     return adp
@@ -245,22 +251,24 @@ class MyHeadDict(nn.Module):
 
 
 class MyAdapterDict(nn.Module):
-    def __init__(self, args, channel, height):
+    def __init__(self, args, feature_list):
         super().__init__()
+        channel = feature_list[0]
+        height = feature_list[1]
         self.adapter = nn.ModuleDict({})
 
         adp_dict = {}
         for name in args.dataset_names:
             adp = select_adapter(
-                args.adp_mode, channel, args.num_frame, height)
+                args.adp_mode, feature_list, args.num_frame)
             adp_dict[name] = adp
         self.adapter.update(adp_dict)
 
-        # self.norm = nn.LayerNorm()
+        self.norm = nn.LayerNorm([channel, args.num_frame, height, height])
 
     def forward(self, x, domain):
         x = self.adapter[domain](x)
-        # x = self.norm(x)
+        x = self.norm(x)
         return x
 
 
@@ -275,8 +283,7 @@ def make_mod_list(model, args):
                         g_child, pytorchvideo.models.head.ResNetBasicHead) == False:
                     mod_list.append(g_child)
                     mod_list.append(
-                        MyAdapterDict(
-                            args, feature_list[index][0], feature_list[index][1]))
+                        MyAdapterDict(args, feature_list[index]))
                     index += 1
     elif args.adp_where == "all":
         for child in model.children():
@@ -284,8 +291,7 @@ def make_mod_list(model, args):
                 if isinstance(c, pytorchvideo.models.stem.ResNetBasicStem):
                     mod_list.append(c)
                     mod_list.append(
-                        MyAdapterDict(
-                            args, feature_list[index][0], feature_list[index][1]))
+                        MyAdapterDict(args, feature_list[index]))
                     index += 1
                 elif isinstance(c, pytorchvideo.models.head.ResNetBasicHead):
                     pass
@@ -295,7 +301,7 @@ def make_mod_list(model, args):
                         for i, g_g in enumerate(g_c):
                             mod_list.append(g_g)
                             mod_list.append(MyAdapterDict(
-                                args, feature_list[index][0], feature_list[index][1]))
+                                args, feature_list[index]))
                     index += 1
                 else:
                     raise NameError("ModuleListの作成に失敗．")
@@ -313,7 +319,7 @@ def make_mod_list(model, args):
                             mod_list.append(g_g)
                             if i != len(g_c) - 1:
                                 mod_list.append(MyAdapterDict(
-                                    args, feature_list[index + 1][0], feature_list[index + 1][1]))
+                                    args, feature_list[index + 1]))
                     index += 1
                 else:
                     raise NameError("ModuleListの作成に失敗．")
