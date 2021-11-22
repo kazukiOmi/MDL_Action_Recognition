@@ -365,8 +365,8 @@ class MyNet(nn.Module):
             else:
                 x = f(x)
             # torchinfoで確認できないので確認用
-            print(type(f))
-            print(x.shape)
+            # print(type(f))
+            # print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
@@ -719,7 +719,7 @@ def train(args, config):
                     "batch_loss_" + name, train_loss_list[i].val, step=step)
             step += 1
 
-            if (itr + 1) % 5000 == 0:
+            if (itr + 1) % 2500 == 0:
                 """Val mode"""
                 model.eval()
 
@@ -873,7 +873,7 @@ def main():
     config = configparser.ConfigParser()
     config.read("config.ini")
     """train"""
-    # train(args, config)
+    train(args, config)
 
     """model check (torchinfo)"""
     # model = MyAdapterDict(args.adp_mode, 96, args.dataset_names)
@@ -883,14 +883,14 @@ def main():
     # model_info(model)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    model = MyNet(args, config)
-    input = torch.randn(1, 3, 16, 224, 224)
-    # input = torch.randn(1, 2048)
-    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    input = input.to(device)
-    out = model(input, args.dataset_names[1])
-    print(out.shape)
+    # model = MyNet(args, config)
+    # input = torch.randn(1, 3, 16, 224, 224)
+    # # input = torch.randn(1, 2048)
+    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    # model = model.to(device)
+    # input = input.to(device)
+    # out = model(input, args.dataset_names[1])
+    # print(out.shape)
 
     # train_loader_list, val_loader_list = loader_list(args)
     # print(train_loader_list[0])
