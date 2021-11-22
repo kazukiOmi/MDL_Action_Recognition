@@ -1,10 +1,10 @@
-from re import X
 from comet_ml import Experiment
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, dataset
 from torch.utils.data.dataloader import default_collate
 from torch.utils.data import DistributedSampler, RandomSampler, SequentialSampler
+import torch.nn.functional as F
 
 
 from torchvision import transforms
@@ -70,129 +70,141 @@ class TestAdapter(nn.Module):
 
 
 class Adapter2D(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, channel, height, use_relu=True):
         super().__init__()
-        self.bn1 = nn.BatchNorm2d(dim)
-        self.conv1 = nn.Conv2d(dim, dim, 1)
-        self.bn2 = nn.BatchNorm2d(dim)
 
-    def video_to_frame(self, inputs):
-        batch_size = inputs.size(0)
-        num_frame = inputs.size(2)
+        self.conv1 = nn.Conv2d(channel, channel, 1)
+        # TODO normalize with C,T,H,W
+        self.norm1 = nn.LayerNorm([channel, height, height])
+        if use_relu:
+            self.act = nn.ReLU()
+        else:
+            self.act = nn.ReLU()  # TODO(omi): implement swish
 
-        inputs = inputs.permute(0, 2, 1, 3, 4)
-        outputs = inputs.reshape(batch_size * num_frame,
-                                 inputs.size(2),
-                                 inputs.size(3),
-                                 inputs.size(4))
+    def video_to_frame(self, input: torch.Tensor) -> torch.Tensor:
+        # input: B,C,T,H,W
+        batch_size, channel, frames, height, width = input.size()
 
-        return outputs
+        input = input.permute(0, 2, 1, 3, 4)  # B,C,T,H,W --> B,T,C,H,W
 
-    def frame_to_video(
-            self, input: torch.Tensor, batch_size, num_frame, channel, height, width) -> torch.Tensor:
-        output = input.reshape(batch_size, num_frame, channel, height, width)
+        # B,T,C,H,W --> BT,C,H,W
+        output = input.reshape(batch_size * frames, channel, height, width)
+        return output
+
+    def frame_to_video(self, input: torch.Tensor, batch_size) -> torch.Tensor:
+        # input: BT,C,H,W
+        batchs_frames, channel, height, width = input.size()
+        frames = int(batchs_frames / batch_size)
+
+        # BT,C,H,W --> B,T,C,H,W
+        output = input.reshape(batch_size, frames, channel, height, width)
+        # B,T,C,H,W --> B,C,T,H,W
         output = output.permute(0, 2, 1, 3, 4)
+
         return output
 
     def forward(self, x):
-        batch_size = x.size(0)
-        num_frame = x.size(2)
-        channel = x.size(1)
-        height = x.size(3)
+        """forward
 
-        x = self.video_to_frame(x)
-        residual = x
-        out = self.bn1(x)
+        Args:
+            x (tensor): input tensor of shape (B,C,T,H,W)
+
+        Returns:
+            out (tensor): output tensor of the same shape with input
+        """
+        batch_size, channel, frames, height, width = x.size()
+
+        out = self.video_to_frame(x)
         out = self.conv1(out)
-        out += residual
-        out = self.bn2(out)
+        # out = nn.LayerNorm([channel, height, width])(out)
+        out = self.norm1(out)
+        out = self.frame_to_video(out, batch_size)
 
-        out = self.frame_to_video(
-            out, batch_size, num_frame, channel, height, height)
-        # print(out.shape)
+        out += x
+        out = self.act(out)
 
         return out
 
 
 class TemporalAdapter(nn.Module):
-    def __init__(self, channel_dim, frame_dim):
+    def __init__(self, channel_dim, frame, height, use_relu=True):
         super().__init__()
-        self.bn1 = nn.BatchNorm3d(channel_dim)
-        self.conv1 = nn.Conv2d(frame_dim, frame_dim, 1)
-        self.bn2 = nn.BatchNorm3d(channel_dim)
+        self.conv1 = nn.Conv2d(frame, frame, 1)
+        self.norm1 = nn.LayerNorm([frame, height, height])
 
-    def swap_channel_frame(self, inputs):
-        batch_size = inputs.size(0)
-        channel = inputs.size(1)
-        num_frame = inputs.size(2)
+        if use_relu:
+            self.act = nn.ReLU()
+        else:
+            self.act = nn.ReLU()  # TODO(omi): implement swish
 
-        # inputs = inputs.permute(0, 2, 1, 3, 4)
-        outputs = inputs.reshape(batch_size * channel,
-                                 num_frame,
-                                 inputs.size(3),
-                                 inputs.size(4))
+    def swap_channel_frame(self, input):
+        batch_size, channel, frames, height, width = input.size()
 
+        # B,C,T,H,W --> BC,T,H,W
+        outputs = input.reshape(batch_size * channel, frames, width, height)
         return outputs
 
-    def frame_to_video(
-            self, input: torch.Tensor, batch_size, num_frame, channel, height, width) -> torch.Tensor:
-        output = input.reshape(batch_size, channel, num_frame, height, width)
-        # output = output.permute(0,2,1,3,4)
+    def frame_to_video(self, input: torch.Tensor, batch_size) -> torch.Tensor:
+        # input: BC,T,H,W
+        batchs_channels, frames, height, width = input.size()
+        channel = int(batchs_channels / batch_size)
+
+        # BC,T,H,W --> B,C,T,H,W
+        output = input.reshape(batch_size, channel, frames, height, width)
         return output
 
     def forward(self, x):
         batch_size = x.size(0)
-        channel = x.size(1)
-        num_frame = x.size(2)
-        height = x.size(3)
-        width = x.size(4)
 
-        residual = x
-
-        out = self.bn1(x)
-        out = self.swap_channel_frame(out)
+        out = self.swap_channel_frame(x)  # B,C,T,H,W --> BC,T,H,W
         out = self.conv1(out)
-        out = self.frame_to_video(
-            out, batch_size, num_frame, channel, height, width)
-        out += residual
-        out = self.bn2(out)
+        out = self.norm1(out)
+        out = self.frame_to_video(out, batch_size)  # BC,T,H,W --> B,C,T,H,W
+
+        out += x
+        out = self.act(out)
 
         return out
 
 
 class SpaceTemporalAdapter(nn.Module):
-    def __init__(self, channel_dim, frame_dim):
+    def __init__(self, channel, frame, height, use_relu=True):
         super().__init__()
-        self.bn1 = nn.BatchNorm3d(channel_dim)
-        self.conv1 = nn.Conv3d(channel_dim, channel_dim *
-                               frame_dim, (frame_dim, 1, 1))
-        self.bn2 = nn.BatchNorm3d(channel_dim)
-        self.channel_dim = channel_dim
-        self.frame_dim = frame_dim
+        self.conv1 = nn.Conv3d(channel, channel * frame, (frame, 1, 1))
+        self.norm1 = nn.LayerNorm([channel, frame, height, height])
+        if use_relu:
+            self.act = nn.ReLU()
+        else:
+            self.act = nn.ReLU()  # TODO(omi): implement swish
 
-    def reshape_dim(self, inputs):
-        batch_size = inputs.size(0)
-        output = inputs.reshape(
-            batch_size, self.channel_dim, self.frame_dim, inputs.size(3), inputs.size(4))
+        self.channel = channel
+        self.frame = frame
+
+    def reshape_dim(self, input):
+        batch_size, channel_frames, _, height, width = input.size()
+        output = input.reshape(
+            batch_size, self.channel, self.frame, height, width)
         return output
 
     def forward(self, x):
-        residual = x
 
-        out = self.bn1(x)
-        out = self.conv1(out)
-        out = self.reshape_dim(out)
-        out += residual
-        out = self.bn2(out)
+        out = x  # identity swap
+        out = self.conv1(out)  # B,C,T,H,W --> B,CT,H,W
+        # out = self.norm1(out)
+        out = self.reshape_dim(out)  # B,CT,H,W --> B,C,T,H,W
+        out = self.norm1(out)
+
+        out += x
+        out = self.act(out)
 
         return out
 
 
 class EfficientSpaceTemporalAdapter(nn.Module):
-    def __init__(self, channel_dim, frame_dim):
+    def __init__(self, channel, frame):
         super().__init__()
-        self.video2frame_adapter = Adapter2D(channel_dim)
-        self.temporal_adapter = TemporalAdapter(channel_dim, frame_dim)
+        self.video2frame_adapter = Adapter2D(channel)
+        self.temporal_adapter = TemporalAdapter(channel, frame)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -202,17 +214,17 @@ class EfficientSpaceTemporalAdapter(nn.Module):
         return out
 
 
-def select_adapter(adp_mode, channel_dim, frame_dim):
+def select_adapter(adp_mode, channel, frame, height):
     if adp_mode == "video2frame":
-        adp = Adapter2D(channel_dim)
+        adp = Adapter2D(channel, height)
     elif adp_mode == "temporal":
-        adp = TemporalAdapter(channel_dim, frame_dim)
+        adp = TemporalAdapter(channel, frame, height)
     elif adp_mode == "space_temporal":
-        adp = SpaceTemporalAdapter(channel_dim, frame_dim)
+        adp = SpaceTemporalAdapter(channel, frame, height)
     elif adp_mode == "efficient_space_temporal":
-        adp = EfficientSpaceTemporalAdapter(channel_dim, frame_dim)
+        adp = EfficientSpaceTemporalAdapter(channel, frame, height)
     else:
-        raise NameError("アダプタの名前が正しくないです．")
+        raise NameError("invalide adapter name")
     return adp
 
 
@@ -233,40 +245,48 @@ class MyHeadDict(nn.Module):
 
 
 class MyAdapterDict(nn.Module):
-    def __init__(self, args, dim):
+    def __init__(self, args, channel, height):
         super().__init__()
         self.adapter = nn.ModuleDict({})
 
         adp_dict = {}
         for name in args.dataset_names:
-            adp = select_adapter(args.adp_mode, dim, args.num_frame)
+            adp = select_adapter(
+                args.adp_mode, channel, args.num_frame, height)
             adp_dict[name] = adp
         self.adapter.update(adp_dict)
 
+        # self.norm = nn.LayerNorm()
+
     def forward(self, x, domain):
         x = self.adapter[domain](x)
+        # x = self.norm(x)
         return x
 
 
 def make_mod_list(model, args):
     mod_list = []
-    dim_list = args.dim_list
-    dim_index = 0
+    feature_list = args.feature_list
+    index = 0
     if args.adp_where == "stages":
         for child in model.children():
             for g_child in child.children():
                 if isinstance(
                         g_child, pytorchvideo.models.head.ResNetBasicHead) == False:
                     mod_list.append(g_child)
-                    mod_list.append(MyAdapterDict(args, dim_list[dim_index]))
-                    dim_index += 1
+                    mod_list.append(
+                        MyAdapterDict(
+                            args, feature_list[index][0], feature_list[index][1]))
+                    index += 1
     elif args.adp_where == "all":
         for child in model.children():
             for c in child.children():
                 if isinstance(c, pytorchvideo.models.stem.ResNetBasicStem):
                     mod_list.append(c)
-                    mod_list.append(MyAdapterDict(args, dim_list[dim_index]))
-                    dim_index += 1
+                    mod_list.append(
+                        MyAdapterDict(
+                            args, feature_list[index][0], feature_list[index][1]))
+                    index += 1
                 elif isinstance(c, pytorchvideo.models.head.ResNetBasicHead):
                     pass
                 elif isinstance(c, pytorchvideo.models.resnet.ResStage):
@@ -275,8 +295,8 @@ def make_mod_list(model, args):
                         for i, g_g in enumerate(g_c):
                             mod_list.append(g_g)
                             mod_list.append(MyAdapterDict(
-                                args, dim_list[dim_index]))
-                    dim_index += 1
+                                args, feature_list[index][0], feature_list[index][1]))
+                    index += 1
                 else:
                     raise NameError("ModuleListの作成に失敗．")
     elif args.adp_where == "blocks":
@@ -293,8 +313,8 @@ def make_mod_list(model, args):
                             mod_list.append(g_g)
                             if i != len(g_c) - 1:
                                 mod_list.append(MyAdapterDict(
-                                    args, dim_list[dim_index+1]))
-                    dim_index += 1
+                                    args, feature_list[index + 1][0], feature_list[index + 1][1]))
+                    index += 1
                 else:
                     raise NameError("ModuleListの作成に失敗．")
     elif args.adp_where == "No":
@@ -339,8 +359,8 @@ class MyNet(nn.Module):
             else:
                 x = f(x)
             # torchinfoで確認できないので確認用
-            # print(type(f))
-            # print(x.shape)
+            print(type(f))
+            print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
@@ -733,13 +753,57 @@ def train(args, config):
     experiment.end()
 
 
+def val_x3d_base(args):
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    val_dataset = get_kinetics("val", args)
+    val_loader = make_loader(val_dataset, args, args.batch_size)
+    model = torch.hub.load(
+        'facebookresearch/pytorchvideo', "x3d_m", pretrained=True)
+    model = model.to(device)
+    torch.backends.cudnn.benchmark = True
+
+    criterion = nn.CrossEntropyLoss()
+
+    hyper_params = {
+        "Dataset": "Kinetics val",
+        "mode": "val x3d_m with Kinetics",
+    }
+    experiment = Experiment(
+        api_key="TawRAwNJiQjPaSMvBAwk4L4pF",
+        project_name="feeature-extract",
+        workspace="kazukiomi",
+    )
+    experiment.add_tag('pytorch')
+    experiment.log_parameters(hyper_params)
+
+    model.eval()
+    val_loss = AverageMeter()
+    val_acc = AverageMeter()
+
+    with torch.no_grad():
+        with tqdm(enumerate(val_loader), total=len(val_loader), leave=True) as pbar_batch:
+            for batch_idx, val_batch in pbar_batch:
+                inputs = val_batch['video'].to(device)
+                labels = val_batch['label'].to(device)
+
+                bs = inputs.size(0)
+
+                val_outputs = model(inputs)
+                loss = criterion(val_outputs, labels)
+                val_loss.update(loss, bs)
+                val_acc.update(top1(val_outputs, labels), bs)
+    experiment.log_metric("val_accuracy", val_acc.avg,)
+
+    return print(val_acc.avg)
+
+
 def model_info(model):
     torchinfo.summary(
         model,
         input_size=(1, 3, 16, 224, 224),
         # model.blocks[4].res_blocks[0],
         # input_size=(1, 96, 16, 14, 14),
-        depth=4,
+        depth=8,
         col_names=["input_size",
                    "output_size"],
         row_settings=("var_names",)
@@ -763,7 +827,8 @@ def get_arguments():
                         choices=["video2frame", "temporal", "space_temporal", "efficient_space_temporal"])
     parser.add_argument("--dataset_names", nargs="*",
                         default=["UCF101", "Kinetics"])
-    parser.add_argument("--dim_list", nargs="*", default=[24, 24, 48, 96, 192])
+    parser.add_argument("--feature_list", nargs="*",
+                        default=[[24, 112], [24, 56], [48, 28], [96, 14], [192, 7]])
     parser.add_argument("--cuda", type=str, default="cuda:1")
     return parser.parse_args()
 
@@ -802,30 +867,32 @@ def main():
     config = configparser.ConfigParser()
     config.read("config.ini")
     """train"""
-    train(args, config)
+    # train(args, config)
 
     """model check (torchinfo)"""
     # model = MyAdapterDict(args.adp_mode, 96, args.dataset_names)
     # model = torch.hub.load(
     #     'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.pretrained)
-    # print(model)
+    # # print(model)
     # model_info(model)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    # model = MyNet(args, config)
-    # input = torch.randn(1, 3, 16, 224, 224)
-    # # input = torch.randn(1, 2048)
-    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    # model = model.to(device)
-    # input = input.to(device)
-    # out = model(input, args.dataset_names[1])
-    # print(out.shape)
+    model = MyNet(args, config)
+    input = torch.randn(1, 3, 16, 224, 224)
+    # input = torch.randn(1, 2048)
+    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    input = input.to(device)
+    out = model(input, args.dataset_names[1])
+    print(out.shape)
 
     # train_loader_list, val_loader_list = loader_list(args)
     # print(train_loader_list[0])
     # print(train_loader_list[1])
     # print(type(train_loader_list[0]))
     # print(len(train_loader_list[0]))
+
+    # val_x3d_base(args)
 
 
 if __name__ == '__main__':
