@@ -67,6 +67,8 @@ def swap(input: torch.Tensor, mode):
         output = input.reshape(batch_size * channel, frames, width, height)
     elif mode == "space_temporal":
         output = input
+    else:
+        raise NameError("invalide adapter name")
     return output
 
 
@@ -948,14 +950,14 @@ def main():
     # model_info(model)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    model = MyNet(args, config)
-    input = torch.randn(1, 3, 16, 224, 224)
-    # input = torch.randn(1, 2048)
-    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    input = input.to(device)
-    out = model(input, args.dataset_names[1])
-    print(out.shape)
+    # model = MyNet(args, config)
+    # input = torch.randn(1, 3, 16, 224, 224)
+    # # input = torch.randn(1, 2048)
+    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    # model = model.to(device)
+    # input = input.to(device)
+    # out = model(input, args.dataset_names[1])
+    # print(out.shape)
 
     # train_loader_list, val_loader_list = loader_list(args)
     # print(train_loader_list[0])
