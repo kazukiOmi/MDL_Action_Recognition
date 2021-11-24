@@ -264,11 +264,11 @@ class MyAdapterDict(nn.Module):
             adp_dict[name] = adp
         self.adapter.update(adp_dict)
 
-        self.norm = nn.LayerNorm([channel, args.num_frame, height, height])
+        # self.norm = nn.LayerNorm([channel, args.num_frame, height, height])
 
     def forward(self, x, domain):
         x = self.adapter[domain](x)
-        x = self.norm(x)
+        # x = self.norm(x)
         return x
 
 
@@ -641,6 +641,8 @@ def train(args, config):
         lr=lr,
         betas=(0.9, 0.999),
         weight_decay=weight_decay)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer, [500, 800], 0.1)
     criterion = nn.CrossEntropyLoss()
 
     hyper_params = {
@@ -709,8 +711,8 @@ def train(args, config):
 
                 train_loss_list[i].update(loss, bs)
                 train_acc_list[i].update(top1(outputs, labels), bs)
-
             optimizer.step()
+            scheduler.step()
 
             for i, name in enumerate(dataset_name_list):
                 experiment.log_metric(
@@ -719,7 +721,7 @@ def train(args, config):
                     "batch_loss_" + name, train_loss_list[i].val, step=step)
             step += 1
 
-            if (itr + 1) % 2500 == 0:
+            if (itr + 1) % 1000 == 0:
                 """Val mode"""
                 model.eval()
 
@@ -818,7 +820,7 @@ def model_info(model):
 
 def get_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--iteration", type=int, default=50000,)
+    parser.add_argument("--iteration", type=int, default=3000,)
     parser.add_argument("--epoch", type=int, default=10,)
     parser.add_argument("--batch_size", type=int, default=32,)
     parser.add_argument("--batch_size_list", nargs="*", default=[32, 32])
@@ -829,7 +831,7 @@ def get_arguments():
     parser.add_argument("--pretrained", type=str, default="True",)
     parser.add_argument("--adp_where", type=str, default="stages",
                         choices=["stages", "blocks", "all", "No"])
-    parser.add_argument("--adp_mode", type=str, default="temporal",
+    parser.add_argument("--adp_mode", type=str,
                         choices=["video2frame", "temporal", "space_temporal", "efficient_space_temporal"])
     parser.add_argument("--dataset_names", nargs="*",
                         default=["UCF101", "Kinetics"])
