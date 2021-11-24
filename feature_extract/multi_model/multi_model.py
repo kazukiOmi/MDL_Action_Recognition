@@ -57,6 +57,64 @@ import configparser
 import time
 
 
+def swap(input: torch.Tensor, mode):
+    # input: B,C,T,H,W
+    batch_size, channel, frames, height, width = input.size()
+    if mode == "video2frame":
+        input = input.permute(0, 2, 1, 3, 4)
+        output = input.reshape(batch_size * frames, channel, height, width)
+    elif mode == "temporal":
+        output = input.reshape(batch_size * channel, frames, width, height)
+    elif mode == "space_temporal":
+        output = input
+    return output
+
+
+def unswap(input: torch.Tensor, mode, batch_size, frames=16):
+    if mode == "video2frame":
+        batchs_frames, channel, height, width = input.size()
+        frames = int(batchs_frames / batch_size)
+        output = input.reshape(batch_size, frames, channel, height, width)
+        output = output.permute(0, 2, 1, 3, 4)
+    elif mode == "temporal":
+        batchs_channels, frames, height, width = input.size()
+        channel = int(batchs_channels / batch_size)
+        output = input.reshape(batch_size, channel, frames, height, width)
+    elif mode == "space_temporal":
+        batch_size, channel_frames, _, height, width = input.size()
+        output = input.reshape(batch_size, -1, frames, height, width)
+    return output
+
+
+class Adapter(nn.Module):
+    def __init__(self, adp_mode, feature_list, frame):
+        super().__init__()
+        channel = feature_list[0]
+        height = feature_list[1]
+        self.adp_mode = adp_mode
+        if adp_mode == "video2frame":
+            self.conv1 = nn.Conv2d(channel, channel, 1)
+        elif adp_mode == "temporal":
+            self.conv1 = nn.Conv2d(frame, frame, 1)
+        elif adp_mode == "space_temporal":
+            self.conv1 = nn.Conv3d(channel, channel * frame, (frame, 1, 1))
+        self.norm1 = nn.LayerNorm([channel, frame, height, height])
+        self.act = nn.ReLU()
+
+    def forward(self, x):
+        batch_size, channel, frames, height, width = x.size()
+
+        out = swap(x, self.adp_mode)
+        out = self.conv1(out)
+        out = unswap(out, self.adp_mode, batch_size, frames)
+        out = self.norm1(out)
+
+        out += x
+        out = self.act(out)
+
+        return out
+
+
 class TestAdapter(nn.Module):
     def __init__(self):
         super().__init__()
@@ -209,28 +267,30 @@ class SpaceTemporalAdapter(nn.Module):
 class EfficientSpaceTemporalAdapter(nn.Module):
     def __init__(self, feature_list, frame):
         super().__init__()
-        self.video2frame_adapter = Adapter2D(feature_list, frame)
-        self.temporal_adapter = TemporalAdapter(feature_list, frame)
-        self.relu = nn.ReLU()
+        self.video2frame_adapter = Adapter("video2frame", feature_list, frame)
+        self.temporal_adapter = Adapter("temporal", feature_list, frame)
 
     def forward(self, x):
         out = self.video2frame_adapter(x)
-        out = self.relu(out)
         out = self.temporal_adapter(x)
         return out
 
 
 def select_adapter(adp_mode, feature_list, frame):
-    if adp_mode == "video2frame":
-        adp = Adapter2D(feature_list, frame)
-    elif adp_mode == "temporal":
-        adp = TemporalAdapter(feature_list, frame)
-    elif adp_mode == "space_temporal":
-        adp = SpaceTemporalAdapter(feature_list, frame)
-    elif adp_mode == "efficient_space_temporal":
+    # if adp_mode == "video2frame":
+    #     adp = Adapter2D(feature_list, frame)
+    # elif adp_mode == "temporal":
+    #     adp = TemporalAdapter(feature_list, frame)
+    # elif adp_mode == "space_temporal":
+    #     adp = SpaceTemporalAdapter(feature_list, frame)
+    # elif adp_mode == "efficient_space_temporal":
+    #     adp = EfficientSpaceTemporalAdapter(feature_list, frame)
+    # else:
+    #     raise NameError("invalide adapter name")
+    if adp_mode == "efficient_space_temporal":
         adp = EfficientSpaceTemporalAdapter(feature_list, frame)
     else:
-        raise NameError("invalide adapter name")
+        adp = Adapter(adp_mode, feature_list, frame)
     return adp
 
 
@@ -264,11 +324,11 @@ class MyAdapterDict(nn.Module):
             adp_dict[name] = adp
         self.adapter.update(adp_dict)
 
-        # self.norm = nn.LayerNorm([channel, args.num_frame, height, height])
+        self.norm = nn.LayerNorm([channel, args.num_frame, height, height])
 
     def forward(self, x, domain):
         x = self.adapter[domain](x)
-        # x = self.norm(x)
+        x = self.norm(x)
         return x
 
 
@@ -365,8 +425,8 @@ class MyNet(nn.Module):
             else:
                 x = f(x)
             # torchinfoで確認できないので確認用
-            # print(type(f))
-            # print(x.shape)
+            print(type(f))
+            print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
@@ -642,7 +702,8 @@ def train(args, config):
         betas=(0.9, 0.999),
         weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        optimizer, [500, 800], 0.1)
+        optimizer, args.sche_list, args.lr_gamma
+    )
     criterion = nn.CrossEntropyLoss()
 
     hyper_params = {
@@ -827,6 +888,8 @@ def get_arguments():
     parser.add_argument("--num_frame", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=32,)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
+    parser.add_argument("--sche_list", nargs="*", default=[500, 1000])
+    parser.add_argument("--lr_gamma", type=float, default=0.1)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--pretrained", type=str, default="True",)
     parser.add_argument("--adp_where", type=str, default="stages",
@@ -875,7 +938,7 @@ def main():
     config = configparser.ConfigParser()
     config.read("config.ini")
     """train"""
-    train(args, config)
+    # train(args, config)
 
     """model check (torchinfo)"""
     # model = MyAdapterDict(args.adp_mode, 96, args.dataset_names)
@@ -885,14 +948,14 @@ def main():
     # model_info(model)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    # model = MyNet(args, config)
-    # input = torch.randn(1, 3, 16, 224, 224)
-    # # input = torch.randn(1, 2048)
-    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    # model = model.to(device)
-    # input = input.to(device)
-    # out = model(input, args.dataset_names[1])
-    # print(out.shape)
+    model = MyNet(args, config)
+    input = torch.randn(1, 3, 16, 224, 224)
+    # input = torch.randn(1, 2048)
+    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    input = input.to(device)
+    out = model(input, args.dataset_names[1])
+    print(out.shape)
 
     # train_loader_list, val_loader_list = loader_list(args)
     # print(train_loader_list[0])
