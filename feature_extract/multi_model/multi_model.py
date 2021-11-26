@@ -61,29 +61,39 @@ def swap(input: torch.Tensor, mode):
     # input: B,C,T,H,W
     batch_size, channel, frames, height, width = input.size()
     if mode == "video2frame":
+        # B,C,T,H,W --> B,T,C,H,W
         input = input.permute(0, 2, 1, 3, 4)
-        output = input.reshape(batch_size * frames, channel, height, width)
+        # B,T,C,H,W --> BT,C,H,W
+        input = input.reshape(batch_size * frames, channel, height, width)
     elif mode == "temporal":
-        output = input.reshape(batch_size * channel, frames, width, height)
+        # B,C,T,H,W --> BC,T,H,W
+        input = input.reshape(batch_size * channel, frames, width, height)
     elif mode == "space_temporal":
-        output = input
+        pass
     else:
         raise NameError("invalide adapter mode")
-    return output
+    return input
 
 
 def unswap(input: torch.Tensor, mode, batch_size, frames=16):
     if mode == "video2frame":
+        # input: BT,C,H,W
         batchs_frames, channel, height, width = input.size()
         frames = int(batchs_frames / batch_size)
+        # BT,C,H,W --> B,T,C,H,W
         output = input.reshape(batch_size, frames, channel, height, width)
+        # B,T,C,H,W --> B,C,T,H,W
         output = output.permute(0, 2, 1, 3, 4)
     elif mode == "temporal":
+        # input: BC,T,H,W
         batchs_channels, frames, height, width = input.size()
         channel = int(batchs_channels / batch_size)
+        # BC,T,H,W --> B,C,T,H,W
         output = input.reshape(batch_size, channel, frames, height, width)
     elif mode == "space_temporal":
+        # input: B,CT,1,H,W
         batch_size, channel_frames, _, height, width = input.size()
+        # B,CT,1,H,W --> B,C,T,H,W
         output = input.reshape(batch_size, -1, frames, height, width)
     return output
 
@@ -101,7 +111,7 @@ class Adapter(nn.Module):
         elif adp_mode == "space_temporal":
             self.conv1 = nn.Conv3d(channel, channel * frame, (frame, 1, 1))
         self.norm1 = nn.LayerNorm([channel, frame, height, height])  # TODO BN?
-        self.act = nn.ReLU()
+        self.act = nn.ReLU()  # TODO(omi): implement swish
 
     def forward(self, x):
         batch_size, channel, frames, height, width = x.size()
@@ -365,7 +375,7 @@ def make_mod_list(model, args):
                             args, feature_list[index]))
                 index += 1
             else:
-                raise NameError("ModuleListの作成に失敗．")
+                raise NameError("Failed to create module list.")
     elif args.adp_place == "blocks":
         for child in module.children():
             if isinstance(child, pytorchvideo.models.stem.ResNetBasicStem):
@@ -382,14 +392,14 @@ def make_mod_list(model, args):
                                 args, feature_list[index + 1]))
                 index += 1
             else:
-                raise NameError("ModuleListの作成に失敗．")
+                raise NameError("Failed to create module list.")
     elif args.adp_place == "No":
         for child in module.children():
             if isinstance(
                     child, pytorchvideo.models.head.ResNetBasicHead) == False:
                 mod_list.append(child)
     else:
-        raise NameError("adp_wehreが該当しません．")
+        raise NameError("invalide adapter place")
     return mod_list
 
 
@@ -622,9 +632,8 @@ def loader_list(args):
     batch_size_dict = dict(
         zip(args.dataset_names, list(map(int, args.batch_size_list))))
     for dataset_name in dataset_list:
-        train_loader_list.append(
-            make_named_loader(
-                dataset_name, "train", args, batch_size_dict[dataset_name]))
+        train_loader_list.append(make_named_loader(
+            dataset_name, "train", args, batch_size_dict[dataset_name]))
         val_loader_list.append(make_named_loader(
             dataset_name, "val", args, batch_size_dict[dataset_name]))
     return train_loader_list, val_loader_list
@@ -634,9 +643,8 @@ def loader_dict(dataset_list, args):
     train_loader_list = []
     val_loader_list = []
     for dataset_name in dataset_list:
-        train_loader_list.append(
-            make_named_loader(
-                dataset_name, "train", args))
+        train_loader_list.append(make_named_loader(
+            dataset_name, "train", args))
         val_loader_list.append(make_named_loader(dataset_name, "val", args))
     train_loader_dict = dict(zip(dataset_list, train_loader_list))
     val_loader_dict = dict(zip(dataset_list, val_loader_list))
@@ -960,14 +968,6 @@ def main():
     input = input.to(device)
     out = model(input, args.dataset_names[1])
     print(out.shape)
-
-    # train_loader_list, val_loader_list = loader_list(args)
-    # print(train_loader_list[0])
-    # print(train_loader_list[1])
-    # print(type(train_loader_list[0]))
-    # print(len(train_loader_list[0]))
-
-    # val_x3d_base(args)
 
 
 if __name__ == '__main__':
