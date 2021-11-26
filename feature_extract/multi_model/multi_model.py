@@ -68,7 +68,7 @@ def swap(input: torch.Tensor, mode):
     elif mode == "space_temporal":
         output = input
     else:
-        raise NameError("invalide adapter name")
+        raise NameError("invalide adapter mode")
     return output
 
 
@@ -100,7 +100,7 @@ class Adapter(nn.Module):
             self.conv1 = nn.Conv2d(frame, frame, 1)
         elif adp_mode == "space_temporal":
             self.conv1 = nn.Conv3d(channel, channel * frame, (frame, 1, 1))
-        self.norm1 = nn.LayerNorm([channel, frame, height, height])
+        self.norm1 = nn.LayerNorm([channel, frame, height, height])  # TODO BN?
         self.act = nn.ReLU()
 
     def forward(self, x):
@@ -338,59 +338,56 @@ def make_mod_list(model, args):
     mod_list = []
     feature_list = args.feature_list
     index = 0
-    if args.adp_where == "stages":
-        for child in model.children():
-            for g_child in child.children():
-                if isinstance(
-                        g_child, pytorchvideo.models.head.ResNetBasicHead) == False:
-                    mod_list.append(g_child)
-                    mod_list.append(
-                        MyAdapterDict(args, feature_list[index]))
-                    index += 1
-    elif args.adp_where == "all":
-        for child in model.children():
-            for c in child.children():
-                if isinstance(c, pytorchvideo.models.stem.ResNetBasicStem):
-                    mod_list.append(c)
-                    mod_list.append(
-                        MyAdapterDict(args, feature_list[index]))
-                    index += 1
-                elif isinstance(c, pytorchvideo.models.head.ResNetBasicHead):
-                    pass
-                elif isinstance(c, pytorchvideo.models.resnet.ResStage):
-                    g = c.children()
-                    for g_c in g:
-                        for i, g_g in enumerate(g_c):
-                            mod_list.append(g_g)
+    module = model.children().__next__()
+    if args.adp_place == "stages":
+        for child in module.children():
+            if isinstance(
+                    child, pytorchvideo.models.head.ResNetBasicHead) == False:
+                mod_list.append(child)
+                mod_list.append(
+                    MyAdapterDict(args, feature_list[index]))
+                index += 1
+    elif args.adp_place == "all":
+        for child in module.children():
+            if isinstance(child, pytorchvideo.models.stem.ResNetBasicStem):
+                mod_list.append(child)
+                mod_list.append(
+                    MyAdapterDict(args, feature_list[index]))
+                index += 1
+            elif isinstance(child, pytorchvideo.models.head.ResNetBasicHead):
+                pass
+            elif isinstance(child, pytorchvideo.models.resnet.ResStage):
+                g = child.children()
+                for g_c in g:
+                    for i, g_g in enumerate(g_c):
+                        mod_list.append(g_g)
+                        mod_list.append(MyAdapterDict(
+                            args, feature_list[index]))
+                index += 1
+            else:
+                raise NameError("ModuleListの作成に失敗．")
+    elif args.adp_place == "blocks":
+        for child in module.children():
+            if isinstance(child, pytorchvideo.models.stem.ResNetBasicStem):
+                mod_list.append(child)
+            elif isinstance(child, pytorchvideo.models.head.ResNetBasicHead):
+                pass
+            elif isinstance(child, pytorchvideo.models.resnet.ResStage):
+                g = child.children()
+                for g_c in g:
+                    for i, g_g in enumerate(g_c):
+                        mod_list.append(g_g)
+                        if i != len(g_c) - 1:
                             mod_list.append(MyAdapterDict(
-                                args, feature_list[index]))
-                    index += 1
-                else:
-                    raise NameError("ModuleListの作成に失敗．")
-    elif args.adp_where == "blocks":
-        for child in model.children():
-            for c in child.children():
-                if isinstance(c, pytorchvideo.models.stem.ResNetBasicStem):
-                    mod_list.append(c)
-                elif isinstance(c, pytorchvideo.models.head.ResNetBasicHead):
-                    pass
-                elif isinstance(c, pytorchvideo.models.resnet.ResStage):
-                    g = c.children()
-                    for g_c in g:
-                        for i, g_g in enumerate(g_c):
-                            mod_list.append(g_g)
-                            if i != len(g_c) - 1:
-                                mod_list.append(MyAdapterDict(
-                                    args, feature_list[index + 1]))
-                    index += 1
-                else:
-                    raise NameError("ModuleListの作成に失敗．")
-    elif args.adp_where == "No":
-        for child in model.children():
-            for g_child in child.children():
-                if isinstance(
-                        g_child, pytorchvideo.models.head.ResNetBasicHead) == False:
-                    mod_list.append(g_child)
+                                args, feature_list[index + 1]))
+                index += 1
+            else:
+                raise NameError("ModuleListの作成に失敗．")
+    elif args.adp_place == "No":
+        for child in module.children():
+            if isinstance(
+                    child, pytorchvideo.models.head.ResNetBasicHead) == False:
+                mod_list.append(child)
     else:
         raise NameError("adp_wehreが該当しません．")
     return mod_list
@@ -711,12 +708,14 @@ def train(args, config):
     hyper_params = {
         "Dataset": args.dataset_names,
         "Iteration": args.iteration,
-        "batch_size": args.batch_size,
+        "batch_size": args.batch_size_list,
         "optimizer": "Adam(0.9, 0.999)",
         "learning late": lr,
+        "scheuler": args.sche_list,
+        "lr_gamma": args.lr_gamma,
         "weight decay": weight_decay,
         "mode": args.adp_mode,
-        "adp place": args.adp_where,
+        "adp place": args.adp_place,
         "pretrained": args.pretrained,
     }
 
@@ -761,7 +760,8 @@ def train(args, config):
                     batch = next(loader_itr_list[i])
                     batch_list.append(batch)
 
-            optimizer.zero_grad()
+            if itr % 5 == 0:
+                optimizer.zero_grad()
             for i, batch in enumerate(batch_list):
                 inputs = batch['video'].to(device)
                 labels = batch['label'].to(device)
@@ -774,7 +774,8 @@ def train(args, config):
 
                 train_loss_list[i].update(loss, bs)
                 train_acc_list[i].update(top1(outputs, labels), bs)
-            optimizer.step()
+            if itr % 5 == 4:
+                optimizer.step()
             scheduler.step()
 
             for i, name in enumerate(dataset_name_list):
@@ -883,18 +884,19 @@ def model_info(model):
 
 def get_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--iteration", type=int, default=3000,)
+    parser.add_argument("--iteration", type=int, default=10000,)
     parser.add_argument("--epoch", type=int, default=10,)
     parser.add_argument("--batch_size", type=int, default=32,)
     parser.add_argument("--batch_size_list", nargs="*", default=[32, 32])
     parser.add_argument("--num_frame", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=32,)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
-    parser.add_argument("--sche_list", nargs="*", default=[500, 1000])
-    parser.add_argument("--lr_gamma", type=float, default=0.1)
+    parser.add_argument("--sche_list", nargs="*",
+                        default=[1500, 3000, 4500, 6000, 7500, 8500])
+    parser.add_argument("--lr_gamma", type=float, default=0.5)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--pretrained", type=str, default="True",)
-    parser.add_argument("--adp_where", type=str, default="stages",
+    parser.add_argument("--adp_place", type=str, default="stages",
                         choices=["stages", "blocks", "all", "No"])
     parser.add_argument("--adp_mode", type=str,
                         choices=["video2frame", "temporal", "space_temporal", "efficient_space_temporal"])
@@ -950,14 +952,14 @@ def main():
     # model_info(model)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    # model = MyNet(args, config)
-    # input = torch.randn(1, 3, 16, 224, 224)
-    # # input = torch.randn(1, 2048)
-    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    # model = model.to(device)
-    # input = input.to(device)
-    # out = model(input, args.dataset_names[1])
-    # print(out.shape)
+    model = MyNet(args, config)
+    input = torch.randn(1, 3, 16, 224, 224)
+    # input = torch.randn(1, 2048)
+    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    input = input.to(device)
+    out = model(input, args.dataset_names[1])
+    print(out.shape)
 
     # train_loader_list, val_loader_list = loader_list(args)
     # print(train_loader_list[0])
