@@ -57,25 +57,25 @@ import configparser
 import time
 
 
-def swap(input: torch.Tensor, mode):
+def swap(input: torch.Tensor, mode) -> torch.Tensor:
     # input: B,C,T,H,W
     batch_size, channel, frames, height, width = input.size()
     if mode == "video2frame":
         # B,C,T,H,W --> B,T,C,H,W
-        input = input.permute(0, 2, 1, 3, 4)
+        output = input.permute(0, 2, 1, 3, 4)
         # B,T,C,H,W --> BT,C,H,W
-        input = input.reshape(batch_size * frames, channel, height, width)
+        output = output.reshape(batch_size * frames, channel, height, width)
     elif mode == "temporal":
         # B,C,T,H,W --> BC,T,H,W
-        input = input.reshape(batch_size * channel, frames, width, height)
+        output = input.reshape(batch_size * channel, frames, width, height)
     elif mode == "space_temporal":
         pass
     else:
         raise NameError("invalide adapter mode")
-    return input
+    return output
 
 
-def unswap(input: torch.Tensor, mode, batch_size, frames=16):
+def unswap(input: torch.Tensor, mode, batch_size, frames=16) -> torch.Tensor:
     if mode == "video2frame":
         # input: BT,C,H,W
         batchs_frames, channel, height, width = input.size()
@@ -98,6 +98,36 @@ def unswap(input: torch.Tensor, mode, batch_size, frames=16):
     return output
 
 
+class Swish(nn.Module):
+    """
+    Wrapper for the Swish activation function.
+    Imported from https://github.com/facebookresearch/pytorchvideo/blob/168e16859a6029ef8ebeb476f9163bebb6c6b87d/pytorchvideo/layers/swish.py#L7
+    """
+
+    def forward(self, x):
+        return SwishFunction.apply(x)
+
+
+class SwishFunction(torch.autograd.Function):
+    """
+    Implementation of the Swish activation function: x * sigmoid(x).
+    Searching for activation functions. Ramachandran, Prajit and Zoph, Barret
+    and Le, Quoc V. 2017
+    """
+
+    @staticmethod
+    def forward(ctx, x):
+        result = x * torch.sigmoid(x)
+        ctx.save_for_backward(x)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x = ctx.saved_variables[0]
+        sigmoid_x = torch.sigmoid(x)
+        return grad_output * (sigmoid_x * (1 + x * (1 - sigmoid_x)))
+
+
 class Adapter(nn.Module):
     def __init__(self, adp_mode, feature_list, frame):
         super().__init__()
@@ -110,7 +140,8 @@ class Adapter(nn.Module):
             self.conv1 = nn.Conv2d(frame, frame, 1)
         elif adp_mode == "space_temporal":
             self.conv1 = nn.Conv3d(channel, channel * frame, (frame, 1, 1))
-        self.norm1 = nn.LayerNorm([channel, frame, height, height])  # TODO BN?
+        # self.norm1 = nn.LayerNorm([channel, frame, height, height])
+        self.norm1 = nn.BatchNorm3d(channel)
         self.act = nn.ReLU()  # TODO(omi): implement swish
 
     def forward(self, x):
@@ -434,8 +465,8 @@ class MyNet(nn.Module):
             else:
                 x = f(x)
             # torchinfoで確認できないので確認用
-            print(type(f))
-            print(x.shape)
+            # print(type(f))
+            # print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
@@ -626,6 +657,7 @@ def make_named_loader(dataset_name, subset, args, batch_size):
 
 
 def loader_list(args):
+    """データローダーのリストを作成"""
     train_loader_list = []
     val_loader_list = []
     dataset_list = args.dataset_names
@@ -834,6 +866,9 @@ def train(args, config):
 
 
 def val_x3d_base(args):
+    """
+    学習済みモデルのKineticsの性能評価
+    """
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     val_dataset = get_kinetics("val", args)
     val_loader = make_loader(val_dataset, args, args.batch_size)
@@ -917,9 +952,12 @@ def get_arguments():
 
 
 def test_batch_process():
+    """
+    ローダーリストからバッチを取り出す挙動の確認用
+    """
     args = get_arguments()
     dataset_name_list = ["UCF101", "Kinetics"]
-    train_loader_list, val_loader_list = loader_list(dataset_name_list, args)
+    train_loader_list, _ = loader_list(dataset_name_list, args)
     loader_iters = []
     for d in train_loader_list:
         loader_iters.append(iter(d))
@@ -938,6 +976,9 @@ def test_batch_process():
 
 
 def make_class_dict(args, config):
+    """
+    keyがクラス名（str）でvalueがクラス数（int）のdictを作成
+    """
     config.read("config.ini")
     num_class_dict = {}
     for name in args.dataset_names:
@@ -950,7 +991,7 @@ def main():
     config = configparser.ConfigParser()
     config.read("config.ini")
     """train"""
-    # train(args, config)
+    train(args, config)
 
     """model check (torchinfo)"""
     # model = MyAdapterDict(args.adp_mode, 96, args.dataset_names)
@@ -960,14 +1001,14 @@ def main():
     # model_info(model)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    model = MyNet(args, config)
-    input = torch.randn(1, 3, 16, 224, 224)
-    # input = torch.randn(1, 2048)
-    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    input = input.to(device)
-    out = model(input, args.dataset_names[1])
-    print(out.shape)
+    # model = MyNet(args, config)
+    # input = torch.randn(1, 3, 16, 224, 224)
+    # # input = torch.randn(1, 2048)
+    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    # model = model.to(device)
+    # input = input.to(device)
+    # out = model(input, args.dataset_names[1])
+    # print(out.shape)
 
 
 if __name__ == '__main__':
