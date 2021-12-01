@@ -44,6 +44,8 @@ import numpy as np
 from tqdm import tqdm
 import itertools
 import os
+import os.path as osp
+import shutil
 import pickle
 import random
 import matplotlib.pyplot as plt
@@ -363,11 +365,11 @@ class MyAdapterDict(nn.Module):
         adp_dict = {}
         for name in args.dataset_names:
             adp = select_adapter(
-                args.adp_mode, feature_list, args.num_frame)
+                args.adp_mode, feature_list, args.num_frames)
             adp_dict[name] = adp
         self.adapter.update(adp_dict)
 
-        self.norm = nn.LayerNorm([channel, args.num_frame, height, height])
+        self.norm = nn.LayerNorm([channel, args.num_frames, height, height])
 
     def forward(self, x, domain):
         x = self.adapter[domain](x)
@@ -440,7 +442,7 @@ class MyNet(nn.Module):
         model = torch.hub.load(
             'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.pretrained)
         self.dim_features = model.blocks[5].proj.in_features
-        self.num_frame = args.num_frame
+        self.num_frames = args.num_frames
         self.class_dict = make_class_dict(args, config)
 
         mod_list = make_mod_list(model, args)
@@ -490,7 +492,7 @@ def get_kinetics(subset, args):
         ApplyTransformToKey(
             key="video",
             transform=Compose([
-                UniformTemporalSubsample(args.num_frame),
+                UniformTemporalSubsample(args.num_frames),
                 transforms.Lambda(lambda x: x / 255.),
                 Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
                 RandomShortSideScale(min_size=256, max_size=320,),
@@ -505,7 +507,7 @@ def get_kinetics(subset, args):
         ApplyTransformToKey(
             key="video",
             transform=Compose([
-                UniformTemporalSubsample(args.num_frame),
+                UniformTemporalSubsample(args.num_frames),
                 transforms.Lambda(lambda x: x / 255.),
                 Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
                 ShortSideScale(256),
@@ -561,7 +563,7 @@ def get_ucf101(subset, args):
         ApplyTransformToKey(
             key="video",
             transform=Compose([
-                UniformTemporalSubsample(args.num_frame),
+                UniformTemporalSubsample(args.num_frames),
                 transforms.Lambda(lambda x: x / 255.),
                 Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
                 RandomShortSideScale(min_size=256, max_size=320,),
@@ -580,7 +582,7 @@ def get_ucf101(subset, args):
         ApplyTransformToKey(
             key="video",
             transform=Compose([
-                UniformTemporalSubsample(args.num_frame),
+                UniformTemporalSubsample(args.num_frames),
                 transforms.Lambda(lambda x: x / 255.),
                 Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
                 ShortSideScale(256),
@@ -714,6 +716,13 @@ def top1(outputs, targets):
     return predicted.eq(targets).sum().item() / batch_size
 
 
+def save_checkpoint(state, filename, dir_data_name):
+    file_path = osp.join(dir_data_name, filename)
+    if not os.path.exists(dir_data_name):
+        os.makedirs(dir_data_name)
+    torch.save(state.state_dict(), file_path)
+
+
 def train(args, config):
     device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
 
@@ -730,16 +739,16 @@ def train(args, config):
 
     lr = args.learning_rate
     weight_decay = args.weight_decay
-    # optimizer = torch.optim.SGD(
-    #     model.parameters(),
-    #     lr=lr,
-    #     momentum=0.9,
-    #     weight_decay=5e-4)
-    optimizer = torch.optim.Adam(
+    optimizer = torch.optim.SGD(
         model.parameters(),
         lr=lr,
-        betas=(0.9, 0.999),
+        momentum=0.9,
         weight_decay=weight_decay)
+    # optimizer = torch.optim.Adam(
+    #     model.parameters(),
+    #     lr=lr,
+    #     betas=(0.9, 0.999),
+    #     weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer, args.sche_list, args.lr_gamma
     )
@@ -800,7 +809,7 @@ def train(args, config):
                     batch = next(loader_itr_list[i])
                     batch_list.append(batch)
 
-            if itr % 5 == 0:
+            if itr % 8 == 0:
                 optimizer.zero_grad()
             for i, batch in enumerate(batch_list):
                 inputs = batch['video'].to(device)
@@ -814,7 +823,7 @@ def train(args, config):
 
                 train_loss_list[i].update(loss, bs)
                 train_acc_list[i].update(top1(outputs, labels), bs)
-            if itr % 5 == 4:
+            if itr % 8 == 7:
                 optimizer.step()
             scheduler.step()
 
@@ -858,9 +867,12 @@ def train(args, config):
                         train_loss_list[i].reset()
                         val_acc_list[i].reset()
                         val_loss_list[i].reset()
-
                 """Finish Val mode"""
-                model.train()
+
+                """save model"""
+                save_checkpoint(model,
+                                filename=str(itr + 1) + "_checkpoint.pth",
+                                dir_data_name="checkpoint")
 
     experiment.end()
 
@@ -927,17 +939,17 @@ def model_info(model):
 
 def get_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--iteration", type=int, default=10000,)
+    parser.add_argument("--iteration", type=int, default=16000,)
     parser.add_argument("--epoch", type=int, default=10,)
     parser.add_argument("--batch_size", type=int, default=32,)
     parser.add_argument("--batch_size_list", nargs="*", default=[32, 32])
-    parser.add_argument("--num_frame", type=int, default=16)
+    parser.add_argument("--num_frames", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=32,)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
     parser.add_argument("--sche_list", nargs="*",
-                        default=[1500, 3000, 4500, 6000, 7500, 8500])
-    parser.add_argument("--lr_gamma", type=float, default=0.5)
-    parser.add_argument("--weight_decay", type=float, default=5e-4)
+                        default=[5000, 10000, 15000])
+    parser.add_argument("--lr_gamma", type=float, default=0.1)
+    parser.add_argument("--weight_decay", type=float, default=5e-5)
     parser.add_argument("--pretrained", type=str, default="True",)
     parser.add_argument("--adp_place", type=str, default="stages",
                         choices=["stages", "blocks", "all", "No"])
@@ -947,7 +959,7 @@ def get_arguments():
                         default=["UCF101", "Kinetics"])
     parser.add_argument("--feature_list", nargs="*",
                         default=[[24, 112], [24, 56], [48, 28], [96, 14], [192, 7]])
-    parser.add_argument("--cuda", type=str, default="cuda:1")
+    parser.add_argument("--cuda", type=str, default="cuda:2")
     return parser.parse_args()
 
 
@@ -986,6 +998,22 @@ def make_class_dict(args, config):
     return num_class_dict
 
 
+def make_lr_list(args, config):
+    model = MyNet(args, config)
+    lr_list = []
+    for name, model in model.named_parameters():
+        # print(name)
+        name = name.rsplit(".", 1)
+        # print(name)
+        param = "model." + name[0] + ".parameters()"
+        if param not in lr_list:
+            # print(param)
+            lr_list.append(param)
+    print(len(lr_list))
+    print(lr_list[0])
+    exec(lr_list[0])
+
+
 def main():
     args = get_arguments()
     config = configparser.ConfigParser()
@@ -1009,6 +1037,8 @@ def main():
     # input = input.to(device)
     # out = model(input, args.dataset_names[1])
     # print(out.shape)
+
+    # make_lr_list(args, config)
 
 
 if __name__ == '__main__':
