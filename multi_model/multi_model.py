@@ -59,47 +59,6 @@ import configparser
 import time
 
 
-def swap(input: torch.Tensor, mode) -> torch.Tensor:
-    # input: B,C,T,H,W
-    batch_size, channel, frames, height, width = input.size()
-    if mode == "video2frame":
-        # B,C,T,H,W --> B,T,C,H,W
-        output = input.permute(0, 2, 1, 3, 4)
-        # B,T,C,H,W --> BT,C,H,W
-        output = output.reshape(batch_size * frames, channel, height, width)
-    elif mode == "temporal":
-        # B,C,T,H,W --> BC,T,H,W
-        output = input.reshape(batch_size * channel, frames, width, height)
-    elif mode == "space_temporal":
-        pass
-    else:
-        raise NameError("invalide adapter mode")
-    return output
-
-
-def unswap(input: torch.Tensor, mode, batch_size, frames=16) -> torch.Tensor:
-    if mode == "video2frame":
-        # input: BT,C,H,W
-        batchs_frames, channel, height, width = input.size()
-        frames = int(batchs_frames / batch_size)
-        # BT,C,H,W --> B,T,C,H,W
-        output = input.reshape(batch_size, frames, channel, height, width)
-        # B,T,C,H,W --> B,C,T,H,W
-        output = output.permute(0, 2, 1, 3, 4)
-    elif mode == "temporal":
-        # input: BC,T,H,W
-        batchs_channels, frames, height, width = input.size()
-        channel = int(batchs_channels / batch_size)
-        # BC,T,H,W --> B,C,T,H,W
-        output = input.reshape(batch_size, channel, frames, height, width)
-    elif mode == "space_temporal":
-        # input: B,CT,1,H,W
-        batch_size, channel_frames, _, height, width = input.size()
-        # B,CT,1,H,W --> B,C,T,H,W
-        output = input.reshape(batch_size, -1, frames, height, width)
-    return output
-
-
 class Swish(nn.Module):
     """
     Wrapper for the Swish activation function.
@@ -131,27 +90,26 @@ class SwishFunction(torch.autograd.Function):
 
 
 class Adapter(nn.Module):
-    def __init__(self, adp_mode, feature_list, frame):
+    def __init__(self, feature_list, frame):
         super().__init__()
-        channel = feature_list[0]
-        height = feature_list[1]
-        self.adp_mode = adp_mode
-        if adp_mode == "video2frame":
-            self.conv1 = nn.Conv2d(channel, channel, 1)
-        elif adp_mode == "temporal":
-            self.conv1 = nn.Conv2d(frame, frame, 1)
-        elif adp_mode == "space_temporal":
-            self.conv1 = nn.Conv3d(channel, channel * frame, (frame, 1, 1))
+        self.channel = feature_list[0]
+        self.height = feature_list[1]
         # self.norm1 = nn.LayerNorm([channel, frame, height, height])
-        self.norm1 = nn.BatchNorm3d(channel)
+        self.norm1 = nn.BatchNorm3d(self.channel)
         self.act = nn.ReLU()  # TODO(omi): implement swish
+
+    def swap(self, input: torch.Tensor) -> torch.Tensor:
+        return input
+
+    def unswap(self, input, bs, frames=16) -> torch.Tensor:
+        return input
 
     def forward(self, x):
         batch_size, channel, frames, height, width = x.size()
 
-        out = swap(x, self.adp_mode)
+        out = self.swap(x)
         out = self.conv1(out)
-        out = unswap(out, self.adp_mode, batch_size, frames)
+        out = self.unswap(out, batch_size, frames)
         out = self.norm1(out)
 
         out += x
@@ -172,148 +130,64 @@ class TestAdapter(nn.Module):
         return x
 
 
-class Adapter2D(nn.Module):
-    def __init__(self, feature_list, frame, use_relu=True):
-        super().__init__()
-        channel = feature_list[0]
-        height = feature_list[1]
+class FrameWise2dAdapter(Adapter):
+    def __init__(self, feature_list, frame):
+        super().__init__(feature_list, frame)
+        self.conv1 = nn.Conv2d(self.channel, self.channel, 1)
 
-        self.conv1 = nn.Conv2d(channel, channel, 1)
-        # TODO normalize with C,T,H,W
-        self.norm1 = nn.LayerNorm([channel, frame, height, height])
-        if use_relu:
-            self.act = nn.ReLU()
-        else:
-            self.act = nn.ReLU()  # TODO(omi): implement swish
-
-    def video_to_frame(self, input: torch.Tensor) -> torch.Tensor:
+    def swap(self, input: torch.Tensor) -> torch.Tensor:
         # input: B,C,T,H,W
         batch_size, channel, frames, height, width = input.size()
-
-        input = input.permute(0, 2, 1, 3, 4)  # B,C,T,H,W --> B,T,C,H,W
-
+        # B,C,T,H,W --> B,T,C,H,W
+        output = input.permute(0, 2, 1, 3, 4)
         # B,T,C,H,W --> BT,C,H,W
-        output = input.reshape(batch_size * frames, channel, height, width)
+        output = output.reshape(batch_size * frames, channel, height, width)
         return output
 
-    def frame_to_video(self, input: torch.Tensor, batch_size) -> torch.Tensor:
+    def unswap(self, input, bs, frames=16) -> torch.Tensor:
         # input: BT,C,H,W
         batchs_frames, channel, height, width = input.size()
-        frames = int(batchs_frames / batch_size)
-
+        frames = int(batchs_frames / bs)
         # BT,C,H,W --> B,T,C,H,W
-        output = input.reshape(batch_size, frames, channel, height, width)
+        output = input.reshape(bs, frames, channel, height, width)
         # B,T,C,H,W --> B,C,T,H,W
         output = output.permute(0, 2, 1, 3, 4)
-
         return output
 
-    def forward(self, x):
-        """forward
 
-        Args:
-            x (tensor): input tensor of shape (B,C,T,H,W)
-
-        Returns:
-            out (tensor): output tensor of the same shape with input
-        """
-        batch_size, channel, frames, height, width = x.size()
-
-        out = self.video_to_frame(x)
-        out = self.conv1(out)
-        # out = nn.LayerNorm([channel, height, width])(out)
-        out = self.frame_to_video(out, batch_size)
-        out = self.norm1(out)
-
-        out += x
-        out = self.act(out)
-
-        return out
-
-
-class TemporalAdapter(nn.Module):
-    def __init__(self, feature_list, frame, use_relu=True):
-        super().__init__()
-        channel = feature_list[0]
-        height = feature_list[1]
+class ChannelWise3dAdapter(Adapter):
+    def __init__(self, feature_list, frame):
+        super().__init__(feature_list, frame)
         self.conv1 = nn.Conv2d(frame, frame, 1)
-        self.norm1 = nn.LayerNorm([channel, frame, height, height])
 
-        if use_relu:
-            self.act = nn.ReLU()
-        else:
-            self.act = nn.ReLU()  # TODO(omi): implement swish
-
-    def swap_channel_frame(self, input):
+    def swap(self, input: torch.Tensor) -> torch.Tensor:
+        # input: B,C,T,H,W
         batch_size, channel, frames, height, width = input.size()
-
         # B,C,T,H,W --> BC,T,H,W
-        outputs = input.reshape(batch_size * channel, frames, width, height)
-        return outputs
+        output = input.reshape(batch_size * channel, frames, width, height)
+        return output
 
-    def frame_to_video(self, input: torch.Tensor, batch_size) -> torch.Tensor:
+    def unswap(self, input, bs, frames=16) -> torch.Tensor:
         # input: BC,T,H,W
         batchs_channels, frames, height, width = input.size()
-        channel = int(batchs_channels / batch_size)
-
+        channel = int(batchs_channels / bs)
         # BC,T,H,W --> B,C,T,H,W
-        output = input.reshape(batch_size, channel, frames, height, width)
+        output = input.reshape(bs, channel, frames, height, width)
         return output
 
-    def forward(self, x):
-        batch_size = x.size(0)
 
-        out = self.swap_channel_frame(x)  # B,C,T,H,W --> BC,T,H,W
-        out = self.conv1(out)
-        out = self.frame_to_video(out, batch_size)  # BC,T,H,W --> B,C,T,H,W
-        out = self.norm1(out)
-
-        out += x
-        out = self.act(out)
-
-        return out
-
-
-class SpaceTemporalAdapter(nn.Module):
-    def __init__(self, feature_list, frame, use_relu=True):
-        super().__init__()
-        channel = feature_list[0]
-        height = feature_list[1]
-        self.conv1 = nn.Conv3d(channel, channel * frame, (frame, 1, 1))
-        self.norm1 = nn.LayerNorm([channel, frame, height, height])
-        if use_relu:
-            self.act = nn.ReLU()
-        else:
-            self.act = nn.ReLU()  # TODO(omi): implement swish
-
-        self.channel = channel
-        self.frame = frame
-
-    def reshape_dim(self, input):
-        batch_size, channel_frames, _, height, width = input.size()
-        output = input.reshape(
-            batch_size, self.channel, self.frame, height, width)
-        return output
-
-    def forward(self, x):
-
-        out = x  # identity swap
-        out = self.conv1(out)  # B,C,T,H,W --> B,CT,H,W
-        # out = self.norm1(out)
-        out = self.reshape_dim(out)  # B,CT,H,W --> B,C,T,H,W
-        out = self.norm1(out)
-
-        out += x
-        out = self.act(out)
-
-        return out
+class VideoAdapter(Adapter):
+    def __init__(self, feature_list, frame):
+        super().__init__(feature_list, frame)
+        self.conv1 = nn.Conv3d(self.channel, self.channel,
+                               3, padding=(1, 1, 1))
 
 
 class EfficientSpaceTemporalAdapter(nn.Module):
     def __init__(self, feature_list, frame):
         super().__init__()
-        self.video2frame_adapter = Adapter("video2frame", feature_list, frame)
-        self.temporal_adapter = Adapter("temporal", feature_list, frame)
+        self.video2frame_adapter = FrameWise2dAdapter(feature_list, frame)
+        self.temporal_adapter = ChannelWise3dAdapter(feature_list, frame)
 
     def forward(self, x):
         out = self.video2frame_adapter(x)
@@ -322,20 +196,16 @@ class EfficientSpaceTemporalAdapter(nn.Module):
 
 
 def select_adapter(adp_mode, feature_list, frame):
-    # if adp_mode == "video2frame":
-    #     adp = Adapter2D(feature_list, frame)
-    # elif adp_mode == "temporal":
-    #     adp = TemporalAdapter(feature_list, frame)
-    # elif adp_mode == "space_temporal":
-    #     adp = SpaceTemporalAdapter(feature_list, frame)
-    # elif adp_mode == "efficient_space_temporal":
-    #     adp = EfficientSpaceTemporalAdapter(feature_list, frame)
-    # else:
-    #     raise NameError("invalide adapter name")
-    if adp_mode == "efficient_space_temporal":
+    if adp_mode == "video2frame":
+        adp = FrameWise2dAdapter(feature_list, frame)
+    elif adp_mode == "temporal":
+        adp = ChannelWise3dAdapter(feature_list, frame)
+    elif adp_mode == "space_temporal":
+        adp = VideoAdapter(feature_list, frame)
+    elif adp_mode == "efficient_space_temporal":
         adp = EfficientSpaceTemporalAdapter(feature_list, frame)
     else:
-        adp = Adapter(adp_mode, feature_list, frame)
+        raise NameError("invalide adapter name")
     return adp
 
 
@@ -467,8 +337,8 @@ class MyNet(nn.Module):
             else:
                 x = f(x)
             # torchinfoで確認できないので確認用
-            # print(type(f))
-            # print(x.shape)
+            print(type(f))
+            print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
@@ -1022,7 +892,7 @@ def main():
     config = configparser.ConfigParser()
     config.read("config.ini")
     """train"""
-    train(args, config)
+    # train(args, config)
 
     """model check (torchinfo)"""
     # model = MyAdapterDict(args.adp_mode, 96, args.dataset_names)
@@ -1032,14 +902,14 @@ def main():
     # model_info(model)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    # model = MyNet(args, config)
-    # input = torch.randn(1, 3, 16, 224, 224)
-    # # input = torch.randn(1, 2048)
-    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    # model = model.to(device)
-    # input = input.to(device)
-    # out = model(input, args.dataset_names[1])
-    # print(out.shape)
+    model = MyNet(args, config)
+    input = torch.randn(1, 3, 16, 224, 224)
+    # input = torch.randn(1, 2048)
+    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    input = input.to(device)
+    out = model(input, args.dataset_names[1])
+    print(out.shape)
 
     # make_lr_list(args, config)
 
