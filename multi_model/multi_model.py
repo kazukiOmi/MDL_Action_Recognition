@@ -183,6 +183,53 @@ class VideoAdapter(Adapter):
                                3, padding=(1, 1, 1))
 
 
+class R2p1dConv(nn.Module):
+    def __init__(self, feature_list):
+        super().__init__()
+        channel = feature_list[0]
+        self.conv1 = nn.Conv2d(channel, channel, 3, padding=1)
+        self.conv2 = nn.Conv3d(channel, channel, (3, 1, 1), padding=(1, 0, 0))
+
+    def swap(self, input: torch.Tensor) -> torch.Tensor:
+        # input: B,C,T,H,W
+        batch_size, channel, frames, height, width = input.size()
+        # B,C,T,H,W --> B,T,C,H,W
+        output = input.permute(0, 2, 1, 3, 4)
+        # B,T,C,H,W --> BT,C,H,W
+        output = output.reshape(batch_size * frames, channel, height, width)
+        return output
+
+    def unswap(self, input, bs, frames=16) -> torch.Tensor:
+        # input: BT,C,H,W
+        batchs_frames, channel, height, width = input.size()
+        frames = int(batchs_frames / bs)
+        # BT,C,H,W --> B,T,C,H,W
+        output = input.reshape(bs, frames, channel, height, width)
+        # B,T,C,H,W --> B,C,T,H,W
+        output = output.permute(0, 2, 1, 3, 4)
+        return output
+
+    def forward(self, x):
+        batch_size, channel, frames, height, width = x.size()
+
+        out = self.swap(x)
+        out = self.conv1(out)
+        out = self.unswap(out, batch_size, frames)
+        out = self.conv2(out)
+
+        return out
+
+
+class EfficientVideoAdapter(Adapter):
+    def __init__(self, feature_list, frame):
+        super().__init__(feature_list, frame)
+        self.conv1 = R2p1dConv(feature_list)
+
+    def forward(self, x):
+        out = self.conv1(x)
+        return out
+
+
 class EfficientSpaceTemporalAdapter(nn.Module):
     def __init__(self, feature_list, frame):
         super().__init__()
@@ -203,7 +250,8 @@ def select_adapter(adp_mode, feature_list, frame):
     elif adp_mode == "space_temporal":
         adp = VideoAdapter(feature_list, frame)
     elif adp_mode == "efficient_space_temporal":
-        adp = EfficientSpaceTemporalAdapter(feature_list, frame)
+        # adp = EfficientSpaceTemporalAdapter(feature_list, frame)
+        adp = EfficientVideoAdapter(feature_list, frame)
     else:
         raise NameError("invalide adapter name")
     return adp
