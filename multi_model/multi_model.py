@@ -385,8 +385,8 @@ class MyNet(nn.Module):
             else:
                 x = f(x)
             # torchinfoで確認できないので確認用
-            print(type(f))
-            print(x.shape)
+            # print(type(f))
+            # print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
@@ -652,8 +652,8 @@ def train(args, config):
         loader_itr_list.append(iter(d))
 
     model = MyNet(args, config)
-    model_path = "checkpoint/5000_checkpoint.pth"
-    model.load_state_dict(torch.load(model_path))
+    # model_path = "checkpoint/5000_checkpoint.pth"
+    # model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     # model = torch.nn.DataParallel(model)
     torch.backends.cudnn.benchmark = True
@@ -687,6 +687,7 @@ def train(args, config):
         "mode": args.adp_mode,
         "adp place": args.adp_place,
         "pretrained": args.pretrained,
+        "ex_name": args.ex_name,
     }
 
     experiment = Experiment(
@@ -793,7 +794,7 @@ def train(args, config):
                 save_checkpoint(model,
                                 filename=str(itr + 1) + "_checkpoint.pth",
                                 dir_name="checkpoint",
-                                ex_name=osp.join(args.adp_mode, "ex0"))
+                                ex_name=osp.join(args.adp_mode, args.ex_name))
 
     experiment.end()
 
@@ -860,7 +861,7 @@ def model_info(model):
 
 def get_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--iteration", type=int, default=16000,)
+    parser.add_argument("--iteration", type=int, default=14000,)
     parser.add_argument("--epoch", type=int, default=10,)
     parser.add_argument("--batch_size", type=int, default=32,)
     parser.add_argument("--batch_size_list", nargs="*", default=[32, 32])
@@ -868,7 +869,7 @@ def get_arguments():
     parser.add_argument("--num_workers", type=int, default=32,)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
     parser.add_argument("--sche_list", nargs="*",
-                        default=[5000, 10000, 15000])
+                        default=[8000, 12000])
     parser.add_argument("--lr_gamma", type=float, default=0.1)
     parser.add_argument("--weight_decay", type=float, default=5e-5)
     parser.add_argument("--pretrained", type=str, default="True",)
@@ -881,6 +882,7 @@ def get_arguments():
     parser.add_argument("--feature_list", nargs="*",
                         default=[[24, 112], [24, 56], [48, 28], [96, 14], [192, 7]])
     parser.add_argument("--cuda", type=str, default="cuda:2")
+    parser.add_argument("--ex_name", type=str)
     return parser.parse_args()
 
 
@@ -940,7 +942,7 @@ def main():
     config = configparser.ConfigParser()
     config.read("config.ini")
     """train"""
-    # train(args, config)
+    train(args, config)
 
     """model check (torchinfo)"""
     # model = MyAdapterDict(args.adp_mode, 96, args.dataset_names)
@@ -950,14 +952,14 @@ def main():
     # model_info(model)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    model = MyNet(args, config)
-    input = torch.randn(1, 3, 16, 224, 224)
-    # input = torch.randn(1, 2048)
-    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    input = input.to(device)
-    out = model(input, args.dataset_names[1])
-    print(out.shape)
+    # model = MyNet(args, config)
+    # input = torch.randn(1, 3, 16, 224, 224)
+    # # input = torch.randn(1, 2048)
+    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    # model = model.to(device)
+    # input = input.to(device)
+    # out = model(input, args.dataset_names[1])
+    # print(out.shape)
 
     # make_lr_list(args, config)
 
