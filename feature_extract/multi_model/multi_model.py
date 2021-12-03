@@ -716,10 +716,11 @@ def top1(outputs, targets):
     return predicted.eq(targets).sum().item() / batch_size
 
 
-def save_checkpoint(state, filename, dir_data_name):
-    file_path = osp.join(dir_data_name, filename)
-    if not os.path.exists(dir_data_name):
-        os.makedirs(dir_data_name)
+def save_checkpoint(state, filename, dir_name, ex_name):
+    dir_name = osp.join(dir_name, ex_name)
+    file_path = osp.join(dir_name, filename)
+    if not os.path.exists(dir_name):
+        os.makedirs(dir_name)
     torch.save(state.state_dict(), file_path)
 
 
@@ -733,6 +734,8 @@ def train(args, config):
         loader_itr_list.append(iter(d))
 
     model = MyNet(args, config)
+    model_path = "checkpoint/5000_checkpoint.pth"
+    model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     # model = torch.nn.DataParallel(model)
     torch.backends.cudnn.benchmark = True
@@ -758,7 +761,7 @@ def train(args, config):
         "Dataset": args.dataset_names,
         "Iteration": args.iteration,
         "batch_size": args.batch_size_list,
-        "optimizer": "Adam(0.9, 0.999)",
+        # "optimizer": "Adam(0.9, 0.999)",
         "learning late": lr,
         "scheuler": args.sche_list,
         "lr_gamma": args.lr_gamma,
@@ -778,7 +781,6 @@ def train(args, config):
     experiment.log_parameters(hyper_params)
 
     step = 0
-    # best_acc = 0
 
     num_iters = args.iteration
 
@@ -872,7 +874,8 @@ def train(args, config):
                 """save model"""
                 save_checkpoint(model,
                                 filename=str(itr + 1) + "_checkpoint.pth",
-                                dir_data_name="checkpoint")
+                                dir_name="checkpoint",
+                                ex_name=osp.join(args.adp_mode, "ex0"))
 
     experiment.end()
 
@@ -1024,7 +1027,7 @@ def main():
     """model check (torchinfo)"""
     # model = MyAdapterDict(args.adp_mode, 96, args.dataset_names)
     # model = torch.hub.load(
-    #     'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.pretrained)
+    # 'facebookresearch/pytorchvideo', "x3d_m", pretrained = args.pretrained)
     # # print(model)
     # model_info(model)
 
