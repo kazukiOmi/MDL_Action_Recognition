@@ -225,10 +225,6 @@ class EfficientVideoAdapter(Adapter):
         super().__init__(feature_list, frame)
         self.conv1 = R2p1dConv(feature_list)
 
-    def forward(self, x):
-        out = self.conv1(x)
-        return out
-
 
 class EfficientSpaceTemporalAdapter(nn.Module):
     def __init__(self, feature_list, frame):
