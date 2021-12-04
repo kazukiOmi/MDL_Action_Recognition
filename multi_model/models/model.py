@@ -50,6 +50,7 @@ class FrameWise2dAdapter(Adapter):
     def __init__(self, feature_list, frame):
         super().__init__(feature_list, frame)
         self.conv1 = nn.Conv2d(self.channel, self.channel, 1)
+        torch.nn.init.kaiming_normal_(self.conv1.weight)
 
     def swap(self, input: torch.Tensor) -> torch.Tensor:
         # input: B,C,T,H,W
@@ -75,6 +76,7 @@ class ChannelWise3dAdapter(Adapter):
     def __init__(self, feature_list, frame):
         super().__init__(feature_list, frame)
         self.conv1 = nn.Conv2d(frame, frame, 1)
+        torch.nn.init.kaiming_normal_(self.conv1.weight)
 
     def swap(self, input: torch.Tensor) -> torch.Tensor:
         # input: B,C,T,H,W
@@ -97,6 +99,7 @@ class VideoAdapter(Adapter):
         super().__init__(feature_list, frame)
         self.conv1 = nn.Conv3d(self.channel, self.channel,
                                3, padding=(1, 1, 1))
+        torch.nn.init.kaiming_normal_(self.conv1.weight)
 
 
 class R2p1dConv(nn.Module):
@@ -105,6 +108,8 @@ class R2p1dConv(nn.Module):
         channel = feature_list[0]
         self.conv1 = nn.Conv2d(channel, channel, 3, padding=1)
         self.conv2 = nn.Conv3d(channel, channel, (3, 1, 1), padding=(1, 0, 0))
+        torch.nn.init.kaiming_normal_(self.conv1.weight)
+        torch.nn.init.kaiming_normal_(self.conv2.weight)
 
     def swap(self, input: torch.Tensor) -> torch.Tensor:
         # input: B,C,T,H,W
@@ -308,8 +313,8 @@ class MyNet(nn.Module):
             else:
                 x = f(x)
             # torchinfoで確認できないので確認用
-            print(type(f))
-            print(x.shape)
+            # print(type(f))
+            # print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)

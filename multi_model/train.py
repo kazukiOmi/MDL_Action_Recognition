@@ -98,7 +98,7 @@ def train(args, config):
     }
 
     experiment = Experiment(
-        api_key="TawRAwNJiQjPaSMvBAwk4L4pF",
+        api_key=args.api_key,
         project_name="feeature-extract",
         workspace="kazukiomi",
     )

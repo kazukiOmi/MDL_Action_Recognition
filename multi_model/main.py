@@ -37,6 +37,8 @@ def get_arguments():
                         default=[[24, 112], [24, 56], [48, 28], [96, 14], [192, 7]])
     parser.add_argument("--cuda", type=str, default="cuda:2")
     parser.add_argument("--ex_name", type=str)
+    parser.add_argument("--api_key", type=str,
+                        default="TawRAwNJiQjPaSMvBAwk4L4pF")
     return parser.parse_args()
 
 
@@ -62,17 +64,17 @@ def main():
     config.read("config.ini")
 
     """train"""
-    # train.train(args, config)
+    train.train(args, config)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    model = Model.MyNet(args, config)
-    input = torch.randn(1, 3, 16, 224, 224)
-    # input = torch.randn(1, 2048)
-    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    input = input.to(device)
-    out = model(input, args.dataset_names[1])
-    print(out.shape)
+    # model = Model.MyNet(args, config)
+    # input = torch.randn(1, 3, 16, 224, 224)
+    # # input = torch.randn(1, 2048)
+    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    # model = model.to(device)
+    # input = input.to(device)
+    # out = model(input, args.dataset_names[1])
+    # print(out.shape)
 
 
 if __name__ == '__main__':
