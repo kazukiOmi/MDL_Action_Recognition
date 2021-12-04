@@ -6,6 +6,8 @@
 
 - datasets/dataset.py: データセットのローダーを作成
 - models/model.py: 複数ドメインを処理するモデルの構築
+- train.py: マルチドメイン学習を実行
+- main.py: 実行ファイル
 
 # 実行
 
