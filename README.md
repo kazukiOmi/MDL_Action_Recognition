@@ -9,7 +9,7 @@
 
 # 実行
 
-'''bash
+```bash
 python main.py --iteration num_itarasions
                --batch_size_list batch_size_list
                --num_workers num_workers
@@ -17,4 +17,4 @@ python main.py --iteration num_itarasions
                --adp_place stages
                --adp_mode
                --dataset_names dataset_name_list
-'''
+```
