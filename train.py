@@ -35,6 +35,26 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
 
+def accuracy(output, target, topk=(1,)):
+    """
+    Computes the accuracy over the k top predictions for the specified values of k
+    https://github.com/pytorch/examples/blob/cedca7729fef11c91e28099a0e45d7e98d03b66d/imagenet/main.py#L411
+    """
+    with torch.no_grad():
+        maxk = max(topk)
+        batch_size = target.size(0)
+
+        _, pred = output.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+        res = []
+        for k in topk:
+            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / batch_size))
+        return res
+
+
 def top1(outputs, targets):
     batch_size = outputs.size(0)
     _, predicted = outputs.max(1)
@@ -111,13 +131,17 @@ def train(args, config):
     num_iters = args.iteration
 
     train_acc_list = []
+    train_top5_acc_list = []
     train_loss_list = []
     val_acc_list = []
+    val_top5_acc_list = []
     val_loss_list = []
     for _ in dataset_name_list:
         train_acc_list.append(AverageMeter())
+        train_top5_acc_list.append(AverageMeter())
         train_loss_list.append(AverageMeter())
         val_acc_list.append(AverageMeter())
+        val_top5_acc_list.append(AverageMeter())
         val_loss_list.append(AverageMeter())
 
     with tqdm(range(num_iters)) as pbar_itrs:
@@ -150,7 +174,9 @@ def train(args, config):
                 loss.backward()
 
                 train_loss_list[i].update(loss, bs)
-                train_acc_list[i].update(top1(outputs, labels), bs)
+                acc1, acc5 = accuracy(outputs, labels, topk=(1, 5))
+                train_acc_list[i].update(acc1, bs)
+                train_top5_acc_list[i].update(acc5, bs)
             if itr % 8 == 7:
                 optimizer.step()
             scheduler.step()
@@ -158,6 +184,8 @@ def train(args, config):
             for i, name in enumerate(dataset_name_list):
                 experiment.log_metric(
                     "batch_accuracy_" + name, train_acc_list[i].val, step=step)
+                experiment.log_metric(
+                    "batch_top5_accuracy_" + name, train_top5_acc_list[i].val, step=step)
                 experiment.log_metric(
                     "batch_loss_" + name, train_loss_list[i].val, step=step)
             step += 1
@@ -179,21 +207,28 @@ def train(args, config):
                             loss = criterion(val_outputs, labels)
 
                             val_loss_list[i].update(loss, bs)
-                            val_acc_list[i].update(
-                                top1(val_outputs, labels), bs)
+                            acc1, acc5 = accuracy(val_outputs, labels, (1, 5))
+                            val_acc_list[i].update(acc1, bs)
+                            val_top5_acc_list[i].update(acc5, bs)
 
                     for i, name in enumerate(dataset_name_list):
                         experiment.log_metric(
                             "train_accuracy_" + name, train_acc_list[i].avg, step=step)
                         experiment.log_metric(
+                            "train_top5_accuracy_" + name, train_top5_acc_list[i].avg, step=step)
+                        experiment.log_metric(
                             "train_loss_" + name, train_loss_list[i].avg, step=step)
                         experiment.log_metric(
                             "val_accuracy_" + name, val_acc_list[i].avg, step=step)
                         experiment.log_metric(
+                            "val_top5_accuracy_" + name, val_top5_acc_list[i].avg, step=step)
+                        experiment.log_metric(
                             "val_loss_" + name, val_loss_list[i].avg, step=step)
                         train_acc_list[i].reset()
+                        train_top5_acc_list[i].reset()
                         train_loss_list[i].reset()
                         val_acc_list[i].reset()
+                        val_top5_acc_list[i].reset()
                         val_loss_list[i].reset()
                 """Finish Val mode"""
 

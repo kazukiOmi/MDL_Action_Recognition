@@ -45,17 +45,31 @@ def get_arguments():
 def make_lr_list(args, config):
     model = Model.MyNet(args, config)
     lr_list = []
-    for name, model in model.named_parameters():
-        # print(name)
-        name = name.rsplit(".", 1)
-        # print(name)
-        param = "model." + name[0] + ".parameters()"
-        if param not in lr_list:
-            # print(param)
-            lr_list.append(param)
-    print(len(lr_list))
-    print(lr_list[0])
-    exec(lr_list[0])
+    my_list = ["module_list.0.conv.conv_t"]
+    # for name, _ in model.named_parameters():
+    param = list(filter(lambda kv: kv[0] in my_list, model.named_parameters()))
+    print(len(param))
+    # print(name)
+    # name = name.rsplit(".", 1)
+    # print(name)
+    # check_name = name[0].split(".")
+    # print(check_name)
+    # print(check_name[1].isdigit())
+    # if check_name[1].isdigit():
+    #     param = "model." + check_name[0] + "[" + \
+    #         check_name[1] + "]." + \
+    #             name[0].split(".", 2)[2] + ".parameters()"
+    # else:
+    #     param = "model." + name[0] + ".parameters()"
+    # if param not in lr_list:
+    #     # print(param)
+    #     lr_list.append(param)
+    # print(len(lr_list))
+    # print(lr_list[0])
+    print(model.module_list[0])
+    print(model.module_list[0].parameters())
+    # print(model.module_list[0].conv.conv_t.parameters())
+    # exec(lr_list[0])
 
 
 def main():
@@ -75,6 +89,8 @@ def main():
     # input = input.to(device)
     # out = model(input, args.dataset_names[1])
     # print(out.shape)
+
+    # make_lr_list(args, config)
 
 
 if __name__ == '__main__':
