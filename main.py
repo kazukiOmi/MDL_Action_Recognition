@@ -78,7 +78,7 @@ def main():
     config.read("config.ini")
 
     """train"""
-    # train.train(args, config)
+    train.train(args, config)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
     # model = Model.MyNet(args, config)
@@ -91,10 +91,6 @@ def main():
     # print(out.shape)
 
     # make_lr_list(args, config)
-    dataset = Data.get_hmdb51("train", args)
-    data = dataset.__next__()
-    print(data["video"].shape)
-    print(data["label"])
 
 
 if __name__ == '__main__':

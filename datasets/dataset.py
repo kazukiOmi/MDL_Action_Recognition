@@ -262,8 +262,10 @@ def make_named_loader(dataset_name, subset, args, batch_size):
         dataset = get_kinetics(subset, args)
     elif dataset_name == "UCF101":
         dataset = get_ucf101(subset, args)
+    elif dataset_name == "HMDB51":
+        dataset = get_hmdb51(subset, args)
     else:
-        raise NameError("データセット名が正しくないです")
+        raise NameError("invalide dataset name")
     loader = make_loader(dataset, args, batch_size)
     return loader
 
