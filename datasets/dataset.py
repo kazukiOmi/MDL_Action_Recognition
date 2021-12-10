@@ -32,6 +32,9 @@ from torchvision.transforms import (
 )
 
 import itertools
+import os.path as osp
+
+from . import hmdb51
 
 
 def get_kinetics(subset, args):
@@ -83,7 +86,7 @@ def get_kinetics(subset, args):
             data_path=root_kinetics + "test_list.txt",
             video_path_prefix=root_kinetics + 'test/',
             clip_sampler=RandomClipSampler(
-                clip_duration=64 / 30),
+                clip_duration=80 / 30),
             video_sampler=RandomSampler,
             decode_audio=False,
             transform=transform,
@@ -94,7 +97,7 @@ def get_kinetics(subset, args):
             data_path=root_kinetics + subset,
             video_path_prefix=root_kinetics + subset,
             clip_sampler=RandomClipSampler(
-                clip_duration=64 / 30),
+                clip_duration=80 / 30),
             video_sampler=RandomSampler,
             decode_audio=False,
             transform=transform,
@@ -166,6 +169,56 @@ def get_ucf101(subset, args):
         video_sampler=RandomSampler,
         decode_audio=False,
         transform=transform,
+    )
+
+    return dataset
+
+
+def get_hmdb51(subset, args):
+    root_hmdb = "/mnt/dataset/HMDB51"
+
+    train_transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.num_frames),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                RandomShortSideScale(min_size=256, max_size=320,),
+                RandomCrop(224),
+                RandomHorizontalFlip(),
+            ]),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    val_transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.num_frames),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                ShortSideScale(256),
+                CenterCrop(224),
+            ]),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    transform = train_transform if subset == "train" else val_transform
+    split_type = "train" if subset == "train" else "test"
+
+    dataset = hmdb51.Hmdb51(
+        label_name_file=osp.join(root_hmdb, "label_name.json"),
+        data_path=osp.join(root_hmdb, "testTrainMulti_7030_splits"),
+        video_path_prefix=osp.join(root_hmdb, 'video'),
+        clip_sampler=RandomClipSampler(
+            clip_duration=80 / 30),
+        video_sampler=RandomSampler,
+        decode_audio=False,
+        transform=transform,
+        split_type=split_type,
     )
 
     return dataset
