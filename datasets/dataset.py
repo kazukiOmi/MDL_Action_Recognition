@@ -165,7 +165,7 @@ def get_ucf101(subset, args):
         data_path=root_ucf101 + subset_root_Ucf101,
         video_path_prefix=root_ucf101 + 'video/',
         clip_sampler=RandomClipSampler(
-            clip_duration=16 / 25),
+            clip_duration=64 / 25),
         video_sampler=RandomSampler,
         decode_audio=False,
         transform=transform,
