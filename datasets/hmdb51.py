@@ -43,7 +43,7 @@ class Hmdb51LabeledVideoPaths:
     def from_csvs(
         cls, label_name_file, file_paths: List[Union[pathlib.Path, str]], split_type: str = "train"
     ):
-        label_name_file = open("/mnt/dataset/HMDB51/label_name.json", "r")
+        label_name_file = open(label_name_file, "r")
         label_name_file = json.load(label_name_file)
         video_paths_and_label = []
         for file_path in file_paths:
