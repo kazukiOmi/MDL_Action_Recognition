@@ -239,3 +239,87 @@ def train(args, config):
                                 ex_name=osp.join(args.adp_mode, args.ex_name))
 
     experiment.end()
+
+
+def val(args, config):
+    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+
+    dataset_name_list = args.dataset_names
+    _, val_loader_list = Data.loader_list(args)
+
+    model = Model.MyNet(args, config)
+    model_path = "checkpoint/space_temporal/ex3/14000_checkpoint.pth"
+    model.load_state_dict(torch.load(model_path))
+    model = model.to(device)
+    torch.backends.cudnn.benchmark = True
+
+    criterion = nn.CrossEntropyLoss()
+    lr = args.learning_rate
+    weight_decay = args.weight_decay
+
+    hyper_params = {
+        "Dataset": args.dataset_names,
+        "Iteration": args.iteration,
+        "batch_size": args.batch_size_list,
+        # "optimizer": "Adam(0.9, 0.999)",
+        "learning late": lr,
+        "scheuler": args.sche_list,
+        "lr_gamma": args.lr_gamma,
+        "weight decay": weight_decay,
+        "mode": args.adp_mode,
+        "adp place": args.adp_place,
+        "pretrained": args.pretrained,
+        "ex_name": args.ex_name,
+    }
+    experiment = Experiment(
+        api_key=args.api_key,
+        project_name="feature-extract",
+        workspace="kazukiomi",
+    )
+
+    experiment.add_tag('pytorch')
+    experiment.log_parameters(hyper_params)
+    step = 0
+    val_acc_list = []
+    val_top5_acc_list = []
+    val_loss_list = []
+    for _ in dataset_name_list:
+        val_acc_list.append(AverageMeter())
+        val_top5_acc_list.append(AverageMeter())
+        val_loss_list.append(AverageMeter())
+
+    model.eval()
+
+    with torch.no_grad():
+        for i, loader in enumerate(val_loader_list):
+            with tqdm(loader) as pbar:
+                for val_batch in pbar:
+                    inputs = val_batch['video'].to(device)
+                    labels = val_batch['label'].to(device)
+
+                    bs = inputs.size(0)
+
+                    val_outputs = model(
+                        inputs, dataset_name_list[i])
+                    loss = criterion(val_outputs, labels)
+
+                    val_loss_list[i].update(loss, bs)
+                    acc1, acc5 = accuracy(val_outputs, labels, (1, 5))
+                    val_acc_list[i].update(acc1, bs)
+                    val_top5_acc_list[i].update(acc5, bs)
+
+                    pbar.set_postfix(
+                        acc=acc1.item(), acc_avg=val_acc_list[i].avg)
+
+        for i, name in enumerate(dataset_name_list):
+            experiment.log_metric(
+                "val_accuracy_" + name, val_acc_list[i].avg, step=step)
+            experiment.log_metric(
+                "val_top5_accuracy_" + name, val_top5_acc_list[i].avg, step=step)
+            experiment.log_metric(
+                "val_loss_" + name, val_loss_list[i].avg, step=step)
+            val_acc_list[i].reset()
+            val_top5_acc_list[i].reset()
+            val_loss_list[i].reset()
+
+    experiment.end()
