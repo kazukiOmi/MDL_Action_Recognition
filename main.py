@@ -18,7 +18,7 @@ def get_arguments():
     parser.add_argument("--iteration", type=int, default=14000,)
     parser.add_argument("--epoch", type=int, default=10,)
     parser.add_argument("--batch_size", type=int, default=32,)
-    parser.add_argument("--batch_size_list", nargs="*", default=[32, 32])
+    parser.add_argument("--batch_size_list", nargs="*", default=[32, 32, 32])
     parser.add_argument("--num_frames", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=32,)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
@@ -27,12 +27,12 @@ def get_arguments():
     parser.add_argument("--lr_gamma", type=float, default=0.1)
     parser.add_argument("--weight_decay", type=float, default=5e-5)
     parser.add_argument("--pretrained", type=str, default="True",)
-    parser.add_argument("--adp_place", type=str, default="stages",
+    parser.add_argument("-ap", "--adp_place", type=str, default="stages",
                         choices=["stages", "blocks", "all", "No"])
-    parser.add_argument("--adp_mode", type=str,
+    parser.add_argument("-am", "--adp_mode", type=str,
                         choices=["video2frame", "temporal", "space_temporal", "efficient_space_temporal"])
     parser.add_argument("--dataset_names", nargs="*",
-                        default=["UCF101", "Kinetics"])
+                        default=["UCF101", "Kinetics", "HMDB51"])
     parser.add_argument("--feature_list", nargs="*",
                         default=[[24, 112], [24, 56], [48, 28], [96, 14], [192, 7]])
     parser.add_argument("--cuda", type=str, default="cuda:2")

@@ -119,7 +119,7 @@ def train(args, config):
 
     experiment = Experiment(
         api_key=args.api_key,
-        project_name="feeature-extract",
+        project_name="feature-extract",
         workspace="kazukiomi",
     )
 
