@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorchvideo
 from pytorchvideo.models import x3d
+import torchinfo
 
 
 class Adapter(nn.Module):
@@ -321,3 +322,46 @@ class MyNet(nn.Module):
         x = self.head_top_dict(x, domain)
         x = x.view(-1, self.class_dict[domain])
         return x
+
+
+class TorchInfoMyNet(nn.Module):
+    def __init__(self, args):
+        super().__init__()
+        model = torch.hub.load(
+            'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.pretrained)
+        self.dim_features = model.blocks[5].proj.in_features
+        self.num_frames = args.num_frames
+        self.num_class = 400
+
+        self.feature_extract = nn.Sequential(
+            model.blocks[0],
+            model.blocks[1],
+            model.blocks[2],
+            model.blocks[3],
+            model.blocks[4],
+        )
+        self.head_bottom = nn.Sequential(
+            model.blocks[5].pool,
+            model.blocks[5].dropout
+        )
+        self.head_top = model.blocks[5].proj
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.feature_extract(x)
+        x = self.head_bottom(x)
+        x = x.permute(0, 2, 3, 4, 1)
+        x = self.head_top(x)
+        x = x.view(-1, self.num_class)
+        return x
+
+
+def torch_info(model):
+    bs = 1
+    input_size = (bs, 3, 16, 224, 224)
+    torchinfo.summary(
+        model=model,
+        input_size=input_size,
+        depth=5,
+        col_names=["input_size", "output_size"],
+        row_setting=("var_names")
+    )

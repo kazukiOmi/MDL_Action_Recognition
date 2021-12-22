@@ -30,7 +30,7 @@ def get_arguments():
     parser.add_argument("-ap", "--adp_place", type=str, default="stages",
                         choices=["stages", "blocks", "all", "No"])
     parser.add_argument("-am", "--adp_mode", type=str,
-                        choices=["video2frame", "temporal", "space_temporal", "efficient_space_temporal"])
+                        choices=["video2frame", "temporal", "space_temporal", "efficient_space_temporal", "No"])
     parser.add_argument("--dataset_names", nargs="*",
                         default=["UCF101", "Kinetics", "HMDB51"])
     parser.add_argument("--feature_list", nargs="*",
@@ -78,7 +78,7 @@ def main():
     config.read("config.ini")
 
     """train"""
-    train.train(args, config)
+    # train.train(args, config)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
     # model = Model.MyNet(args, config)
@@ -91,6 +91,11 @@ def main():
     # print(out.shape)
 
     # make_lr_list(args, config)
+    model = Model.TorchInfoMyNet(args)
+    # input = torch.randn(1, 3, 16, 224, 224)
+    # output = model(input)
+    # print(output.shape)
+    Model.torch_info(model)
 
 
 if __name__ == '__main__':
