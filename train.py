@@ -115,7 +115,9 @@ def train(args, config):
         "adp place": args.adp_place,
         "pretrained": args.pretrained,
         "ex_name": args.ex_name,
-        "LN": "No",
+        # "LN": "No",
+        "adp num": args.adp_num,
+        "adp_pos": args.adp_pos,
     }
 
     experiment = Experiment(

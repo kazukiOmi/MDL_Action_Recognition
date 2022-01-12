@@ -60,6 +60,9 @@ def get_arguments():
     parser.add_argument("--pretrained", type=str, default="True",)
     parser.add_argument("-ap", "--adp_place", type=str, default="stages",
                         choices=["stages", "blocks", "all", "No"])
+    parser.add_argument("--adp_pos", type=str, default="all",
+                        choices=["all", "top", "bottom"])
+    parser.add_argument("--adp_num", type=int, default=5)
     parser.add_argument("-am", "--adp_mode", type=str,
                         choices=["video2frame", "temporal", "space_temporal", "efficient_space_temporal", "No"])
     parser.add_argument("-dn", "--dataset_names", nargs="*",
@@ -79,18 +82,18 @@ def main():
     config.read("config.ini")
 
     """train"""
-    train.train(args, config)
+    # train.train(args, config)
     # train.val(args, config)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    # model = Model.MyNet(args, config)
-    # input = torch.randn(1, 3, 16, 224, 224)
-    # # input = torch.randn(1, 2048)
-    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    # model = model.to(device)
-    # input = input.to(device)
-    # out = model(input, args.dataset_names[1])
-    # print(out.shape)
+    model = Model.MyNet(args, config)
+    input = torch.randn(1, 3, 16, 224, 224)
+    # input = torch.randn(1, 2048)
+    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    input = input.to(device)
+    out = model(input, args.dataset_names[1])
+    print(out.shape)
 
     # make_lr_list(args, config)
     # model = Model.TorchInfoMyNet(args)

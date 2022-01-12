@@ -205,11 +205,11 @@ class MyAdapterDict(nn.Module):
             adp_dict[name] = adp
         self.adapter.update(adp_dict)
 
-        # self.norm = nn.LayerNorm([channel, args.num_frames, height, height])
+        self.norm = nn.LayerNorm([channel, args.num_frames, height, height])
 
     def forward(self, x, domain):
         x = self.adapter[domain](x)
-        # x = self.norm(x)
+        x = self.norm(x)
         return x
 
 
@@ -223,9 +223,19 @@ def make_mod_list(model, args):
             if isinstance(
                     child, pytorchvideo.models.head.ResNetBasicHead) == False:
                 mod_list.append(child)
-                mod_list.append(
-                    MyAdapterDict(args, feature_list[index]))
-                index += 1
+                if args.adp_pos == "all":
+                    mod_list.append(MyAdapterDict(args, feature_list[index]))
+                    index += 1
+                elif args.adp_pos == "bottom":
+                    if index < args.adp_num:
+                        mod_list.append(
+                            MyAdapterDict(args, feature_list[index]))
+                    index += 1
+                elif args.adp_pos == "top":
+                    if index >= 5 - args.adp_num:
+                        mod_list.append(
+                            MyAdapterDict(args, feature_list[index]))
+                    index += 1
     elif args.adp_place == "all":
         for child in module.children():
             if isinstance(child, pytorchvideo.models.stem.ResNetBasicStem):
@@ -314,8 +324,8 @@ class MyNet(nn.Module):
             else:
                 x = f(x)
             # torchinfoで確認できないので確認用
-            # print(type(f))
-            # print(x.shape)
+            print(type(f))
+            print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
