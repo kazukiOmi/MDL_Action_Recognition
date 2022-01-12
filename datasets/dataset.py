@@ -174,6 +174,53 @@ def get_ucf101(subset, args):
     return dataset
 
 
+def get_ssv2(subset, args):
+    train_transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.num_frames),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                RandomShortSideScale(min_size=256, max_size=320,),
+                RandomCrop(224),
+            ]),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    val_transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.num_frames),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                ShortSideScale(256),
+                CenterCrop(224),
+            ]),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    transform = val_transform if subset == "val" else train_transform
+
+    # root_ssv2 = '/mnt/dataset/something-something-v2/'
+    root_ssv2 = '/mnt/dataset/something-something-v2/video.category'
+
+    dataset = Kinetics(
+        data_path=osp.join(root_ssv2, subset),
+        video_path_prefix=osp.join(root_ssv2, subset),
+        clip_sampler=RandomClipSampler(
+            clip_duration=32 / 12),
+        video_sampler=RandomSampler,
+        decode_audio=False,
+        transform=transform,
+    )
+
+    return dataset
+
+
 def get_hmdb51(subset, args):
     root_hmdb = "/mnt/dataset/HMDB51"
 
