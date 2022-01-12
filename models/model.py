@@ -205,11 +205,11 @@ class MyAdapterDict(nn.Module):
             adp_dict[name] = adp
         self.adapter.update(adp_dict)
 
-        self.norm = nn.LayerNorm([channel, args.num_frames, height, height])
+        # self.norm = nn.LayerNorm([channel, args.num_frames, height, height])
 
     def forward(self, x, domain):
         x = self.adapter[domain](x)
-        x = self.norm(x)
+        # x = self.norm(x)
         return x
 
 
@@ -335,10 +335,15 @@ class TorchInfoMyNet(nn.Module):
 
         self.feature_extract = nn.Sequential(
             model.blocks[0],
+            # EfficientVideoAdapter([24, 112], 16),
             model.blocks[1],
+            # EfficientVideoAdapter([24, 56], 16),
             model.blocks[2],
+            # EfficientVideoAdapter([48, 28], 16),
             model.blocks[3],
+            # EfficientVideoAdapter([96, 14], 16),
             model.blocks[4],
+            # EfficientVideoAdapter([192, 7], 16),
         )
         self.head_bottom = nn.Sequential(
             model.blocks[5].pool,
@@ -361,7 +366,7 @@ def torch_info(model):
     torchinfo.summary(
         model=model,
         input_size=input_size,
-        depth=5,
+        depth=8,
         col_names=["input_size", "output_size"],
-        row_setting=("var_names")
+        # row_setting=("var_names")
     )

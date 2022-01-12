@@ -79,7 +79,7 @@ def train(args, config):
         loader_itr_list.append(iter(d))
 
     model = Model.MyNet(args, config)
-    # model_path = "checkpoint/5000_checkpoint.pth"
+    # model_path = "checkpoint/efficient_space_temporal/ex11/3000_checkpoint.pth"
     # model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     # model = torch.nn.DataParallel(model)
@@ -115,6 +115,7 @@ def train(args, config):
         "adp place": args.adp_place,
         "pretrained": args.pretrained,
         "ex_name": args.ex_name,
+        "LN": "No",
     }
 
     experiment = Experiment(
@@ -190,7 +191,8 @@ def train(args, config):
                     "batch_loss_" + name, train_loss_list[i].val, step=step)
             step += 1
 
-            if (itr + 1) % 1000 == 0:
+            if (step) % 1000 == 0:
+                # if (itr + 1) % 3500 == 0:
                 """Val mode"""
                 model.eval()
 
