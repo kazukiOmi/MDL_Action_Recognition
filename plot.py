@@ -6,12 +6,11 @@ from comet_ml.query import Parameter
 import matplotlib.pyplot as plt
 import numpy as np
 
-if __name__ == "__main__":
+
+def plot_bar_graph():
     api = API(api_key="TawRAwNJiQjPaSMvBAwk4L4pF")
     tag = Tag("ex_adp_mode")
     experiment = api.query("kazukiomi", "feature-extract", tag)
-    print(experiment)
-
     dataset_list = ["UCF101", "Kinetics", "HMDB51"]
     plot_dict = {"UCF101": [], "Kinetics": [], "HMDB51": []}
     for i, ex in enumerate(experiment):
@@ -41,3 +40,36 @@ if __name__ == "__main__":
     plt.xticks(x, labels)
     plt.legend()
     plt.savefig("fig.png")
+
+
+def plot_line_graph():
+    api = API(api_key="TawRAwNJiQjPaSMvBAwk4L4pF")
+    tag = Tag("plot")
+    experiment = api.query("kazukiomi", "feature-extract", tag)
+
+    dataset_list = ["UCF101", "Kinetics", "HMDB51"]
+    plot_dict = {"UCF101": [], "Kinetics": [], "HMDB51": []}
+
+    plot_metric = ["train_accuracy", "val_accuracy", "train_loss", "val_loss"]
+    plot_metric = plot_metric[1]  # select metric
+
+    fig, ax = plt.subplots()
+    left = np.array([1000, 2000, 3000, 4000, 5000, 6000, 7000,
+                     8000, 9000, 10000, 11000, 12000, 13000, 14000])
+
+    for dataset in dataset_list:
+        acc_list = experiment[0].get_metrics(plot_metric + "_" + dataset)
+        for metric in acc_list:
+            plot_dict[dataset].append(float(metric.get("metricValue")))
+        plt.plot(left, plot_dict[dataset], label=dataset)
+
+    ax.set_xlabel("iteration")
+    # ax.set_ylabel("val loss")
+    ax.set_ylabel("val top-1 accuracy (%)")
+    plt.legend()
+    plt.savefig("plot/" + plot_metric + ".pdf")
+
+
+if __name__ == "__main__":
+    plot_line_graph()
+    # plot_bar_graph()
