@@ -1,6 +1,7 @@
 from comet_ml import config
 
 import torch
+import torchinfo
 
 import models
 from models import model as Model
@@ -82,18 +83,18 @@ def main():
     config.read("config.ini")
 
     """train"""
-    # train.train(args, config)
+    train.train(args, config)
     # train.val(args, config)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    model = Model.MyNet(args, config)
-    input = torch.randn(1, 3, 16, 224, 224)
-    # input = torch.randn(1, 2048)
-    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    input = input.to(device)
-    out = model(input, args.dataset_names[1])
-    print(out.shape)
+    # model = Model.MyNet(args, config)
+    # input = torch.randn(1, 3, 16, 224, 224)
+    # # input = torch.randn(1, 2048)
+    # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+    # model = model.to(device)
+    # input = input.to(device)
+    # out = model(input, args.dataset_names[1])
+    # print(out.shape)
 
     # make_lr_list(args, config)
     # model = Model.TorchInfoMyNet(args)
@@ -101,7 +102,24 @@ def main():
     # output = model(input)
     # print(output.shape)
     # print(model)
-    # Model.torch_info(model)
+    # model = torch.hub.load(
+    #     'facebookresearch/pytorchvideo', 'slowfast_16x8_r101_50_50')
+    # batch_size = 1
+    # slow_frames = 64
+    # fast_frames = 16
+
+    # input_data = [[
+    #     torch.zeros(batch_size, 3, fast_frames, 224, 224),
+    #     torch.zeros(batch_size, 3, slow_frames, 224, 224),
+    # ]]
+    # torchinfo.summary(
+    #     model=model,
+    #     input_data=input_data,
+    #     depth=10,
+    #     col_names=["input_size",
+    #                "output_size"],
+    #     row_settings=("var_names",)
+    # )
 
 
 if __name__ == '__main__':

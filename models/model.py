@@ -324,8 +324,8 @@ class MyNet(nn.Module):
             else:
                 x = f(x)
             # torchinfoで確認できないので確認用
-            print(type(f))
-            print(x.shape)
+            # print(type(f))
+            # print(x.shape)
 
         x = self.head_bottom(x)
         x = x.permute(0, 2, 3, 4, 1)
