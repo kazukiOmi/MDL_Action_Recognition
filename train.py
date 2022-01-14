@@ -332,10 +332,10 @@ def val(args, config):
 def multiview_val(args, config):
     device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
 
-    # dataset_name_list = args.dataset_names
-    # _, val_loader_list = Data.loader_list(args)
-    dataset = Data.get_multiview_kinetics("val", args)
-    loader = Data.make_loader(dataset, args, 1)
+    dataset_name_list = args.dataset_names
+    loader_list = Data.multiview_loader_list(args)
+    # dataset = Data.get_multiview_kinetics("val", args)
+    # loader = Data.make_loader(dataset, args, 1)
 
     model = Model.MyNet(args, config)
     model_path = "checkpoint/No/ex0/14000_checkpoint.pth"
@@ -347,24 +347,24 @@ def multiview_val(args, config):
     # lr = args.learning_rate
     # weight_decay = args.weight_decay
 
-    hyper_params = {
-        "Dataset": args.dataset_names,
-        "Iteration": args.iteration,
-        "batch_size": args.batch_size_list,
-        # "optimizer": "Adam(0.9, 0.999)",
-        "learning late": lr,
-        "scheuler": args.sche_list,
-        "lr_gamma": args.lr_gamma,
-        "weight decay": weight_decay,
-        "mode": args.adp_mode,
-        "adp place": args.adp_place,
-        "pretrained": args.pretrained,
-        "ex_name": args.ex_name,
-        # "LN": "No",
-        "adp num": args.adp_num,
-        "adp_pos": args.adp_pos,
-        "multiview": True,
-    }
+    # hyper_params = {
+    #     "Dataset": args.dataset_names,
+    #     "Iteration": args.iteration,
+    #     "batch_size": args.batch_size_list,
+    #     # "optimizer": "Adam(0.9, 0.999)",
+    #     "learning late": lr,
+    #     "scheuler": args.sche_list,
+    #     "lr_gamma": args.lr_gamma,
+    #     "weight decay": weight_decay,
+    #     "mode": args.adp_mode,
+    #     "adp place": args.adp_place,
+    #     "pretrained": args.pretrained,
+    #     "ex_name": args.ex_name,
+    #     # "LN": "No",
+    #     "adp num": args.adp_num,
+    #     "adp_pos": args.adp_pos,
+    #     "multiview": True,
+    # }
     # experiment = Experiment(
     #     api_key=args.api_key,
     #     project_name="feature-extract",
@@ -381,30 +381,33 @@ def multiview_val(args, config):
     model.eval()
 
     with torch.no_grad():
-        with tqdm(enumerate(loader), total=len(loader)) as pbar:
-            for i, batch in pbar:
-                b, v, c, t, h, w = batch['video'].shape
-                batch['video'] = batch['video'].view(-1, c, t, h, w)
-                batch['video'] = batch['video'].to(device)
-                batch['label'] = batch['label'].to(device)
-                left = batch['video'][:, :, :,
-                                      (h - 224) // 2:(h + 224) // 2, 0:224]
-                right = batch['video'][:, :, :,
-                                       (h - 224) // 2:(h + 224) // 2, -224:]
-                center = batch['video'][:, :, :,
-                                        (h - 224) // 2:(h + 224) // 2, (w - 224) // 2:(w + 224) // 2]
-                batch["video"] = torch.cat((left, right, center), 0)
+        for i, loader in enumerate(loader_list):
+            if i != 2:
+                continue
+            with tqdm(enumerate(loader), total=len(loader)) as pbar:
+                for j, batch in pbar:
+                    b, v, c, t, h, w = batch['video'].shape
+                    batch['video'] = batch['video'].view(-1, c, t, h, w)
+                    batch['video'] = batch['video'].to(device)
+                    batch['label'] = batch['label'].to(device)
+                    left = batch['video'][:, :, :,
+                                          (h - 224) // 2:(h + 224) // 2, 0:224]
+                    right = batch['video'][:, :, :,
+                                           (h - 224) // 2:(h + 224) // 2, -224:]
+                    center = batch['video'][:, :, :,
+                                            (h - 224) // 2:(h + 224) // 2, (w - 224) // 2:(w + 224) // 2]
+                    batch["video"] = torch.cat((left, right, center), 0)
 
-                outputs = model(batch["video"], "Kinetics")
-                outputs = torch.mean(outputs, 0, keepdim=True)
-                acc1, acc5 = accuracy(outputs, batch["label"], topk=(1, 5))
-                acc_top1.update(acc1, 1)
-                acc_top5.update(acc5, 1)
+                    outputs = model(batch["video"], dataset_name_list[i])
+                    outputs = torch.mean(outputs, 0, keepdim=True)
+                    acc1, acc5 = accuracy(outputs, batch["label"], topk=(1, 5))
+                    acc_top1.update(acc1, 1)
+                    acc_top5.update(acc5, 1)
 
-                pbar.set_postfix(
-                    acc1_avg=acc_top1.avg, acc5_avg=acc_top5.avg)
+                    pbar.set_postfix(
+                        acc1_avg=acc_top1.avg, acc5_avg=acc_top5.avg)
 
-                # if i > 5:
-                #     break
+                    # if i > 5:
+                    #     break
 
     # experiment.end()

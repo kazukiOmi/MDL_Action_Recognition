@@ -230,6 +230,40 @@ def get_ucf101(subset, args):
     return dataset
 
 
+def get_multiview_ucf101(subset, args):
+    root_ucf101 = '/mnt/dataset/UCF101/'
+    subset_root_Ucf101 = 'ucfTrainTestlist/trainlist01.txt' if subset == "train" else 'ucfTrainTestlist/testlist.txt'
+
+    transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.num_frames),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                ShortSideScale(256),
+                # CenterCrop(224),
+            ]),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    labeled_video_paths = LabeledVideoPaths.from_path(
+        data_path=osp.join(root_ucf101, subset_root_Ucf101))
+    labeled_video_paths.path_prefix = osp.join(root_ucf101, "video")
+    dataset = MultiView.KineticsMultiViewTest(
+        labeled_video_paths,
+        clip_sampler=ConstantClipsPerVideoSampler(
+            clip_duration=64 / 25, clips_per_video=10),
+        video_sampler=RandomSampler,
+        transform=transform,
+        decode_audio=False,
+        decoder="pyav",
+    )
+
+    return dataset
+
+
 def get_ssv2(subset, args):
     train_transform = Compose([
         ApplyTransformToKey(
@@ -327,6 +361,36 @@ def get_hmdb51(subset, args):
     return dataset
 
 
+def get_multiview_hmdb51(subset, args):
+    root_hmdb = "/mnt/dataset/HMDB51"
+
+    transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.num_frames),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                ShortSideScale(256),
+                # CenterCrop(224),
+            ]),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    # split_type = "train" if subset == "train" else "test"
+
+    dataset = hmdb51.multiview_Hmdb51(
+        label_name_file=osp.join(root_hmdb, "label_name.json"),
+        data_path=osp.join(root_hmdb, "testTrainMulti_7030_splits"),
+        video_path_prefix=osp.join(root_hmdb, 'video'),
+        transform=transform,
+        split_id=1,
+        split_type="test",
+    )
+    return dataset
+
+
 class LimitDataset(torch.utils.data.Dataset):
     def __init__(self, dataset):
         super().__init__()
@@ -386,6 +450,29 @@ def loader_list(args):
         val_loader_list.append(make_named_loader(
             dataset_name, "val", args, batch_size_dict[dataset_name]))
     return train_loader_list, val_loader_list
+
+
+def make_named_multiview_loader(dataset_name, subset, args, batch_size):
+    if dataset_name == "Kinetics":
+        dataset = get_multiview_kinetics(subset, args)
+    elif dataset_name == "UCF101":
+        dataset = get_multiview_ucf101(subset, args)
+    elif dataset_name == "HMDB51":
+        dataset = get_multiview_hmdb51(subset, args)
+    else:
+        raise NameError("invalide dataset name")
+    loader = make_loader(dataset, args, batch_size)
+    return loader
+
+
+def multiview_loader_list(args):
+    """データローダーのリストを作成"""
+    val_loader_list = []
+    dataset_list = args.dataset_names
+    for dataset_name in dataset_list:
+        val_loader_list.append(make_named_multiview_loader(
+            dataset_name, "val", args, 1))
+    return val_loader_list
 
 
 def loader_dict(dataset_list, args):

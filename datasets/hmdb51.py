@@ -10,6 +10,10 @@ from iopath.common.file_io import g_pathmgr
 
 from pytorchvideo.data.clip_sampling import ClipSampler
 from pytorchvideo.data.labeled_video_dataset import LabeledVideoDataset
+from pytorchvideo.data.clip_sampling import ConstantClipsPerVideoSampler
+from torch.utils.data import RandomSampler
+
+from . import multiview as MultiView
 
 
 class Hmdb51LabeledVideoPaths:
@@ -121,6 +125,33 @@ def Hmdb51(
         transform,
         decode_audio=decode_audio,
         decoder=decoder,
+    )
+
+    return dataset
+
+
+def multiview_Hmdb51(
+    label_name_file: str,
+    data_path: pathlib.Path,
+    transform: Optional[Callable[[dict], Any]] = None,
+    video_path_prefix: str = "",
+    split_id: int = 1,
+    split_type: str = "test",
+):
+    torch._C._log_api_usage_once("PYTORCHVIDEO.dataset.Hmdb51")
+
+    labeled_video_paths = Hmdb51LabeledVideoPaths.from_dir(
+        label_name_file, data_path, split_id=split_id, split_type=split_type
+    )
+    labeled_video_paths.path_prefix = video_path_prefix
+    dataset = MultiView.KineticsMultiViewTest(
+        labeled_video_paths,
+        clip_sampler=ConstantClipsPerVideoSampler(
+            clip_duration=80 / 30, clips_per_video=10),
+        video_sampler=RandomSampler,
+        transform=transform,
+        decode_audio=False,
+        decoder="pyav",
     )
 
     return dataset
