@@ -1,5 +1,7 @@
+from json import decoder
+from ntpath import join
 import torch
-from torch.utils.data import DataLoader, dataset
+from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
 from torch.utils.data import DistributedSampler, RandomSampler, SequentialSampler
 
@@ -31,10 +33,15 @@ from torchvision.transforms import (
     RandomHorizontalFlip,
 )
 
+from pytorchvideo.data.labeled_video_dataset import LabeledVideoDataset, LabeledVideoPaths
+from pytorchvideo.data.clip_sampling import ConstantClipsPerVideoSampler, ClipSampler
+
+
 import itertools
 import os.path as osp
 
 from . import hmdb51
+from . import multiview as MultiView
 
 
 def get_kinetics(subset, args):
@@ -101,6 +108,55 @@ def get_kinetics(subset, args):
             video_sampler=RandomSampler,
             decode_audio=False,
             transform=transform,
+        )
+        return dataset
+
+    return False
+
+
+def get_multiview_kinetics(subset, args):
+    root_kinetics = '/mnt/dataset/Kinetics400/'
+
+    transform = Compose([
+        ApplyTransformToKey(
+            key="video",
+            transform=Compose([
+                UniformTemporalSubsample(args.num_frames),
+                transforms.Lambda(lambda x: x / 255.),
+                Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
+                ShortSideScale(256),
+                # CenterCrop(224),
+            ]),
+        ),
+        RemoveKey("audio"),
+    ])
+
+    if subset == "test":
+        labeled_video_paths = LabeledVideoPaths.from_path(
+            data_path=osp.join(root_kinetics, "test_list.txt"))
+        labeled_video_paths.path_prefix = osp.join(root_kinetics, "test")
+        dataset = MultiView.KineticsMultiViewTest(
+            labeled_video_paths,
+            clip_sampler=ConstantClipsPerVideoSampler(
+                clip_duration=80 / 30, clips_per_video=10),
+            video_sampler=SequentialSampler,
+            transform=transform,
+            decode_audio=False,
+            decoder="pyav",
+        )
+        return dataset
+    else:
+        labeled_video_paths = LabeledVideoPaths.from_path(
+            data_path=osp.join(root_kinetics, subset))
+        labeled_video_paths.path_prefix = osp.join(root_kinetics, subset)
+        dataset = MultiView.KineticsMultiViewTest(
+            labeled_video_paths,
+            clip_sampler=ConstantClipsPerVideoSampler(
+                clip_duration=80 / 30, clips_per_video=10),
+            video_sampler=RandomSampler,
+            transform=transform,
+            decode_audio=False,
+            decoder="pyav",
         )
         return dataset
 

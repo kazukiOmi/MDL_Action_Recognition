@@ -83,7 +83,7 @@ def main():
     config.read("config.ini")
 
     """train"""
-    train.train(args, config)
+    # train.train(args, config)
     # train.val(args, config)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
@@ -120,6 +120,9 @@ def main():
     #                "output_size"],
     #     row_settings=("var_names",)
     # )
+
+    dataset = Data.get_multiview_kinetics("test", args)
+    print(dataset)
 
 
 if __name__ == '__main__':
