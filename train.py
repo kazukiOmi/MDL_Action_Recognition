@@ -252,7 +252,7 @@ def val(args, config):
     _, val_loader_list = Data.loader_list(args)
 
     model = Model.MyNet(args, config)
-    model_path = "checkpoint/space_temporal/ex3/14000_checkpoint.pth"
+    model_path = "checkpoint/No/ex0/14000_checkpoint.pth"
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     torch.backends.cudnn.benchmark = True
@@ -327,3 +327,84 @@ def val(args, config):
             val_loss_list[i].reset()
 
     experiment.end()
+
+
+def multiview_val(args, config):
+    device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
+
+    # dataset_name_list = args.dataset_names
+    # _, val_loader_list = Data.loader_list(args)
+    dataset = Data.get_multiview_kinetics("val", args)
+    loader = Data.make_loader(dataset, args, 1)
+
+    model = Model.MyNet(args, config)
+    model_path = "checkpoint/No/ex0/14000_checkpoint.pth"
+    model.load_state_dict(torch.load(model_path))
+    model = model.to(device)
+    torch.backends.cudnn.benchmark = True
+
+    # criterion = nn.CrossEntropyLoss()
+    # lr = args.learning_rate
+    # weight_decay = args.weight_decay
+
+    hyper_params = {
+        "Dataset": args.dataset_names,
+        "Iteration": args.iteration,
+        "batch_size": args.batch_size_list,
+        # "optimizer": "Adam(0.9, 0.999)",
+        "learning late": lr,
+        "scheuler": args.sche_list,
+        "lr_gamma": args.lr_gamma,
+        "weight decay": weight_decay,
+        "mode": args.adp_mode,
+        "adp place": args.adp_place,
+        "pretrained": args.pretrained,
+        "ex_name": args.ex_name,
+        # "LN": "No",
+        "adp num": args.adp_num,
+        "adp_pos": args.adp_pos,
+        "multiview": True,
+    }
+    # experiment = Experiment(
+    #     api_key=args.api_key,
+    #     project_name="feature-extract",
+    #     workspace="kazukiomi",
+    # )
+
+    # experiment.add_tag('pytorch')
+    # experiment.log_parameters(hyper_params)
+    # step = 0
+    # val_loss = AverageMeter()
+    acc_top1 = AverageMeter()
+    acc_top5 = AverageMeter()
+
+    model.eval()
+
+    with torch.no_grad():
+        with tqdm(enumerate(loader), total=len(loader)) as pbar:
+            for i, batch in pbar:
+                b, v, c, t, h, w = batch['video'].shape
+                batch['video'] = batch['video'].view(-1, c, t, h, w)
+                batch['video'] = batch['video'].to(device)
+                batch['label'] = batch['label'].to(device)
+                left = batch['video'][:, :, :,
+                                      (h - 224) // 2:(h + 224) // 2, 0:224]
+                right = batch['video'][:, :, :,
+                                       (h - 224) // 2:(h + 224) // 2, -224:]
+                center = batch['video'][:, :, :,
+                                        (h - 224) // 2:(h + 224) // 2, (w - 224) // 2:(w + 224) // 2]
+                batch["video"] = torch.cat((left, right, center), 0)
+
+                outputs = model(batch["video"], "Kinetics")
+                outputs = torch.mean(outputs, 0, keepdim=True)
+                acc1, acc5 = accuracy(outputs, batch["label"], topk=(1, 5))
+                acc_top1.update(acc1, 1)
+                acc_top5.update(acc5, 1)
+
+                pbar.set_postfix(
+                    acc1_avg=acc_top1.avg, acc5_avg=acc_top5.avg)
+
+                # if i > 5:
+                #     break
+
+    # experiment.end()

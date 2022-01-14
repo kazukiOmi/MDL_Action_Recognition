@@ -85,6 +85,7 @@ def main():
     """train"""
     # train.train(args, config)
     # train.val(args, config)
+    train.multiview_val(args, config)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
     # model = Model.MyNet(args, config)
@@ -120,9 +121,6 @@ def main():
     #                "output_size"],
     #     row_settings=("var_names",)
     # )
-
-    dataset = Data.get_multiview_kinetics("test", args)
-    print(dataset)
 
 
 if __name__ == '__main__':
