@@ -4,10 +4,13 @@
 
 # コード
 
-- datasets/dataset.py: データセットのロード
+- datasets/dataset.py: 全てのデータセットのロードを管理するファイル
+- datasets/hmdb51.py: HMDB51を読み込むためのファイル
+- datasets/multiview.py: データセットをマルチビューでロードするためのファイル
 - models/model.py: 複数ドメインを処理するモデルの構築
 - train.py: マルチドメイン学習を実行
 - main.py: 実行ファイル
+- plot.py: 実行結果をプロット
 
 # 実行
 
@@ -17,6 +20,6 @@ python main.py --iteration num_itarasions
                --num_workers num_workers
                --pretrained True 
                --adp_place stages
-               --adp_mode
+               --adp_mode　adapter mode
                --dataset_names dataset_name_list
 ```
