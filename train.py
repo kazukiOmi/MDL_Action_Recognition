@@ -338,7 +338,8 @@ def multiview_val(args, config):
     # loader = Data.make_loader(dataset, args, 1)
 
     model = Model.MyNet(args, config)
-    model_path = "checkpoint/No/ex0/14000_checkpoint.pth"
+    model_path = osp.join(
+        "checkpoint/efficient_space_temporal", args.ex_name, "14000_checkpoint.pth")
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     torch.backends.cudnn.benchmark = True
@@ -347,33 +348,33 @@ def multiview_val(args, config):
     # lr = args.learning_rate
     # weight_decay = args.weight_decay
 
-    # hyper_params = {
-    #     "Dataset": args.dataset_names,
-    #     "Iteration": args.iteration,
-    #     "batch_size": args.batch_size_list,
-    #     # "optimizer": "Adam(0.9, 0.999)",
-    #     "learning late": lr,
-    #     "scheuler": args.sche_list,
-    #     "lr_gamma": args.lr_gamma,
-    #     "weight decay": weight_decay,
-    #     "mode": args.adp_mode,
-    #     "adp place": args.adp_place,
-    #     "pretrained": args.pretrained,
-    #     "ex_name": args.ex_name,
-    #     # "LN": "No",
-    #     "adp num": args.adp_num,
-    #     "adp_pos": args.adp_pos,
-    #     "multiview": True,
-    # }
-    # experiment = Experiment(
-    #     api_key=args.api_key,
-    #     project_name="feature-extract",
-    #     workspace="kazukiomi",
-    # )
+    hyper_params = {
+        "Dataset": args.dataset_names,
+        # "Iteration": args.iteration,
+        # "batch_size": args.batch_size_list,
+        # # "optimizer": "Adam(0.9, 0.999)",
+        # "learning late": lr,
+        # "scheuler": args.sche_list,
+        # "lr_gamma": args.lr_gamma,
+        # "weight decay": weight_decay,
+        "mode": args.adp_mode,
+        "adp place": args.adp_place,
+        "pretrained": args.pretrained,
+        "ex_name": args.ex_name,
+        # "LN": "No",
+        # "adp num": args.adp_num,
+        # "adp_pos": args.adp_pos,
+        "multiview": True,
+    }
+    experiment = Experiment(
+        api_key=args.api_key,
+        project_name="feature-extract",
+        workspace="kazukiomi",
+    )
 
-    # experiment.add_tag('pytorch')
-    # experiment.log_parameters(hyper_params)
-    # step = 0
+    experiment.add_tag('multiview')
+    experiment.log_parameters(hyper_params)
+    step = 0
     # val_loss = AverageMeter()
     acc_top1 = AverageMeter()
     acc_top5 = AverageMeter()
@@ -382,8 +383,6 @@ def multiview_val(args, config):
 
     with torch.no_grad():
         for i, loader in enumerate(loader_list):
-            if i != 2:
-                continue
             with tqdm(enumerate(loader), total=len(loader)) as pbar:
                 for j, batch in pbar:
                     b, v, c, t, h, w = batch['video'].shape
@@ -406,8 +405,11 @@ def multiview_val(args, config):
 
                     pbar.set_postfix(
                         acc1_avg=acc_top1.avg, acc5_avg=acc_top5.avg)
+            experiment.log_metric(
+                "val_accuracy_" + dataset_name_list[i], acc_top1.avg, step=step)
+            experiment.log_metric(
+                "val_top5_accuracy_" + dataset_name_list[i], acc_top5.avg, step=step)
+            acc_top1.reset()
+            acc_top5.reset()
 
-                    # if i > 5:
-                    #     break
-
-    # experiment.end()
+    experiment.end()
