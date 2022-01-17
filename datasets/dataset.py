@@ -245,6 +245,10 @@ def get_multiview_ucf101(subset, args):
                 # CenterCrop(224),
             ]),
         ),
+        ApplyTransformToKey(
+            key="label",
+            transform=transforms.Lambda(lambda x: x - 1),
+        ),
         RemoveKey("audio"),
     ])
 
