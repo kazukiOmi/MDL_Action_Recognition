@@ -334,12 +334,10 @@ def multiview_val(args, config):
 
     dataset_name_list = args.dataset_names
     loader_list = Data.multiview_loader_list(args)
-    # dataset = Data.get_multiview_kinetics("val", args)
-    # loader = Data.make_loader(dataset, args, 1)
 
     model = Model.MyNet(args, config)
     model_path = osp.join(
-        "checkpoint/efficient_space_temporal", args.ex_name, "14000_checkpoint.pth")
+        "checkpoint", args.adp_mode, args.ex_name, "14000_checkpoint.pth")
     model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     torch.backends.cudnn.benchmark = True

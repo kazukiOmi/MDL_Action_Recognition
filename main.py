@@ -85,7 +85,7 @@ def main():
     """train"""
     # train.train(args, config)
     # train.val(args, config)
-    train.multiview_val(args, config)
+    # train.multiview_val(args, config)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
     # model = Model.MyNet(args, config)
@@ -96,31 +96,6 @@ def main():
     # input = input.to(device)
     # out = model(input, args.dataset_names[1])
     # print(out.shape)
-
-    # make_lr_list(args, config)
-    # model = Model.TorchInfoMyNet(args)
-    # input = torch.randn(1, 3, 16, 224, 224)
-    # output = model(input)
-    # print(output.shape)
-    # print(model)
-    # model = torch.hub.load(
-    #     'facebookresearch/pytorchvideo', 'slowfast_16x8_r101_50_50')
-    # batch_size = 1
-    # slow_frames = 64
-    # fast_frames = 16
-
-    # input_data = [[
-    #     torch.zeros(batch_size, 3, fast_frames, 224, 224),
-    #     torch.zeros(batch_size, 3, slow_frames, 224, 224),
-    # ]]
-    # torchinfo.summary(
-    #     model=model,
-    #     input_data=input_data,
-    #     depth=10,
-    #     col_names=["input_size",
-    #                "output_size"],
-    #     row_settings=("var_names",)
-    # )
 
 
 if __name__ == '__main__':
