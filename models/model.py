@@ -1,3 +1,4 @@
+from importlib.metadata import requires
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -302,6 +303,10 @@ class MyNet(nn.Module):
         self.num_frames = args.num_frames
         self.class_dict = make_class_dict(args, config)
 
+        if args.fix_shared_params == True:
+            for name, param in model.named_parameters():
+                param.requires_grad = False
+
         mod_list = make_mod_list(model, args)
 
         self.module_list = nn.ModuleList(mod_list)
@@ -315,7 +320,7 @@ class MyNet(nn.Module):
                                         self.class_dict)
 
         # for name, param in self.named_parameters():
-        #     print(name)
+        #     print(f"{name}: {param.requires_grad}")
 
     def forward(self, x: torch.Tensor, domain) -> torch.Tensor:
         for f in self.module_list:

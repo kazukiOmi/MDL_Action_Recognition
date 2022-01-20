@@ -58,7 +58,9 @@ def get_arguments():
                         default=[8000, 12000])
     parser.add_argument("--lr_gamma", type=float, default=0.1)
     parser.add_argument("--weight_decay", type=float, default=5e-5)
-    parser.add_argument("--pretrained", type=str, default="True",)
+    parser.add_argument("--pretrained", type=bool, default=True,)
+    parser.add_argument("-fix", "--fix_shared_params",
+                        type=bool, default=False,)
     parser.add_argument("-ap", "--adp_place", type=str, default="stages",
                         choices=["stages", "blocks", "all", "No"])
     parser.add_argument("--adp_pos", type=str, default="all",
@@ -88,7 +90,7 @@ def main():
     # train.multiview_val(args, config)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    # model = Model.MyNet(args, config)
+    model = Model.MyNet(args, config)
     # input = torch.randn(1, 3, 16, 224, 224)
     # # input = torch.randn(1, 2048)
     # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")
