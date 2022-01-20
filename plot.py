@@ -43,6 +43,8 @@ def plot_bar_graph():
 
 
 def plot_line_graph():
+    """plot 3domain result of plot tag for comet_ml"""
+
     api = API(api_key="TawRAwNJiQjPaSMvBAwk4L4pF")
     tag = Tag("plot")
     experiment = api.query("kazukiomi", "feature-extract", tag)
@@ -51,7 +53,8 @@ def plot_line_graph():
     plot_dict = {"UCF101": [], "Kinetics": [], "HMDB51": []}
 
     plot_metric = ["train_accuracy", "val_accuracy", "train_loss", "val_loss"]
-    plot_metric = plot_metric[1]  # select metric
+    plot_id = 3
+    plot_metric = plot_metric[plot_id]
 
     fig, ax = plt.subplots()
     left = np.array([1000, 2000, 3000, 4000, 5000, 6000, 7000,
@@ -61,15 +64,74 @@ def plot_line_graph():
         acc_list = experiment[0].get_metrics(plot_metric + "_" + dataset)
         for metric in acc_list:
             plot_dict[dataset].append(float(metric.get("metricValue")))
-        plt.plot(left, plot_dict[dataset], label=dataset)
+        # plt.plot(left, plot_dict[dataset], label=dataset)
+        plt.plot(left, plot_dict[dataset])
 
-    ax.set_xlabel("iteration")
-    # ax.set_ylabel("val loss")
-    ax.set_ylabel("val top-1 accuracy (%)")
-    plt.legend()
-    plt.savefig("plot/" + plot_metric + ".pdf")
+    ax.set_xlabel("iteration", size=18)
+    ax.set_xticks([0, 2000, 4000, 6000, 8000, 10000, 12000, 14000])
+    if plot_id == 0:
+        ax.set_ylabel("train loss", size=24)
+        ax.set_yticks([0, 1, 2, 3, 4, 5, 6])
+    if plot_id == 1:
+        ax.set_ylabel("val loss", size=24)
+        ax.set_yticks([0, 1, 2, 3, 4, 5, 6])
+    if plot_id == 2:
+        ax.set_ylabel("train top-1 accuracy (%)", size=24)
+        ax.set_yticks([0, 20, 40, 60, 80, 100])
+    if plot_id == 3:
+        ax.set_ylabel("val top-1 accuracy (%)", size=24)
+        ax.set_yticks([0, 20, 40, 60, 80, 100])
+
+    plt.savefig("plot/domain_3/" + plot_metric + ".pdf")
+
+
+def plot_line_graph2():
+    """plot 1domain result of plot2 tag for comet_ml"""
+
+    api = API(api_key="TawRAwNJiQjPaSMvBAwk4L4pF")
+    tag = Tag("plot2")
+    experiment = api.query("kazukiomi", "feature-extract", tag)
+
+    dataset_list = ["UCF101", "Kinetics", "HMDB51"]
+    dataset_list2 = ["UCF101", "Kinetics400", "HMDB51"]
+    plot_dict = {"UCF101": [], "Kinetics": [], "HMDB51": []}
+
+    plot_metric = ["train_loss", "val_loss", "train_accuracy", "val_accuracy"]
+    plot_id = 0
+    plot_metric = plot_metric[plot_id]
+
+    fig, ax = plt.subplots()
+    left = np.array([1000, 2000, 3000, 4000, 5000, 6000, 7000,
+                     8000, 9000, 10000, 11000, 12000, 13000, 14000])
+
+    experiment[1], experiment[2] = experiment[2], experiment[1]
+    for i, ex in enumerate(experiment):
+        acc_list = ex.get_metrics(plot_metric + "_" + dataset_list[i])
+        for metric in acc_list:
+            plot_dict[dataset_list[i]].append(float(metric.get("metricValue")))
+        plt.plot(left, plot_dict[dataset_list[i]], label=dataset_list2[i])
+        # plt.plot(left, plot_dict[dataset_list[i]])
+        # print(plot_dict[dataset_list[i]])
+
+    ax.set_xlabel("iteration", size=24)
+    ax.set_xticks([0, 2000, 4000, 6000, 8000, 10000, 12000, 14000])
+    if plot_id == 0:
+        ax.set_ylabel("train loss", size=24)
+        ax.set_yticks([0, 1, 2, 3, 4, 5, 6])
+        plt.legend(fontsize=24)
+    if plot_id == 1:
+        ax.set_ylabel("val loss", size=24)
+        ax.set_yticks([0, 1, 2, 3, 4, 5, 6])
+    if plot_id == 2:
+        ax.set_ylabel("train top-1 accuracy (%)", size=24)
+        ax.set_yticks([0, 20, 40, 60, 80, 100])
+    if plot_id == 3:
+        ax.set_ylabel("val top-1 accuracy (%)", size=24)
+        ax.set_yticks([0, 20, 40, 60, 80, 100])
+
+    plt.savefig("plot/domain_1/" + plot_metric + ".pdf")
 
 
 if __name__ == "__main__":
-    plot_line_graph()
+    plot_line_graph2()
     # plot_bar_graph()
