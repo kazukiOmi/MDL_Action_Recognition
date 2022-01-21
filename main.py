@@ -53,7 +53,7 @@ def get_arguments():
                         default=[32, 32, 32])
     parser.add_argument("--num_frames", type=int, default=16)
     parser.add_argument("--num_workers", type=int, default=32,)
-    parser.add_argument("--learning_rate", type=float, default=1e-3)
+    parser.add_argument("-lr", "--learning_rate", type=float, default=1e-3)
     parser.add_argument("--sche_list", nargs="*",
                         default=[8000, 12000])
     parser.add_argument("--lr_gamma", type=float, default=0.1)
@@ -61,6 +61,10 @@ def get_arguments():
     parser.add_argument("--pretrained", type=bool, default=True,)
     parser.add_argument("-fix", "--fix_shared_params",
                         type=bool, default=False,)
+    parser.add_argument("--is_fix_in_train",
+                        type=bool, default=False,)
+    parser.add_argument("-itr_fix", "--iteration_fix",
+                        type=int, default=10000,)
     parser.add_argument("-ap", "--adp_place", type=str, default="stages",
                         choices=["stages", "blocks", "all", "No"])
     parser.add_argument("--adp_pos", type=str, default="all",
@@ -85,12 +89,12 @@ def main():
     config.read("config.ini")
 
     """train"""
-    # train.train(args, config)
+    train.train(args, config)
     # train.val(args, config)
     # train.multiview_val(args, config)
 
     """model_check (実際に入力を流す，dict使うとtorchinfoできないから)"""
-    model = Model.MyNet(args, config)
+    # model = Model.MyNet(args, config)
     # input = torch.randn(1, 3, 16, 224, 224)
     # # input = torch.randn(1, 2048)
     # device = torch.device(args.cuda if torch.cuda.is_available() else "cpu")

@@ -79,7 +79,7 @@ def train(args, config):
         loader_itr_list.append(iter(d))
 
     model = Model.MyNet(args, config)
-    # model_path = "checkpoint/efficient_space_temporal/ex11/3000_checkpoint.pth"
+    # model_path = "checkpoint/efficient_space_temporal/ex5/12000_checkpoint.pth"
     # model.load_state_dict(torch.load(model_path))
     model = model.to(device)
     # model = torch.nn.DataParallel(model)
@@ -92,11 +92,6 @@ def train(args, config):
         lr=lr,
         momentum=0.9,
         weight_decay=weight_decay)
-    # optimizer = torch.optim.Adam(
-    #     model.parameters(),
-    #     lr=lr,
-    #     betas=(0.9, 0.999),
-    #     weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer, args.sche_list, args.lr_gamma
     )
@@ -118,6 +113,8 @@ def train(args, config):
         # "LN": "No",
         "adp num": args.adp_num,
         "adp_pos": args.adp_pos,
+        "is_fix_in_train": args.is_fix_in_train,
+        "iteration of fix_shared_params": args.iteration_fix,
     }
 
     experiment = Experiment(
@@ -130,6 +127,7 @@ def train(args, config):
     experiment.log_parameters(hyper_params)
 
     step = 0
+    # step = 12000
 
     num_iters = args.iteration
 
@@ -192,6 +190,10 @@ def train(args, config):
                 experiment.log_metric(
                     "batch_loss_" + name, train_loss_list[i].val, step=step)
             step += 1
+
+            if step == args.iteration_fix and args.is_fix_in_train == True:
+                model.fix_shared_params(args)
+                print("fix shared params")
 
             if (step) % 1000 == 0:
                 # if (itr + 1) % 3500 == 0:
