@@ -319,9 +319,6 @@ class MyNet(nn.Module):
                                         args.dataset_names,
                                         self.class_dict)
 
-        # for name, param in self.named_parameters():
-        #     print(f"{name}: {param.requires_grad}")
-
     def forward(self, x: torch.Tensor, domain) -> torch.Tensor:
         for f in self.module_list:
             if isinstance(f, MyAdapterDict):
@@ -337,6 +334,14 @@ class MyNet(nn.Module):
         x = self.head_top_dict(x, domain)
         x = x.view(-1, self.class_dict[domain])
         return x
+
+    def fix_shared_params(self, args):
+        for name, param in self.named_parameters():
+            param.requires_grad = False
+        for name, param in self.named_parameters():
+            for dataset_name in args.dataset_names:
+                if dataset_name in name and param.requires_grad == False:
+                    param.requires_grad = True
 
 
 class TorchInfoMyNet(nn.Module):
