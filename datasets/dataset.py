@@ -435,6 +435,8 @@ def make_named_loader(dataset_name, subset, args, batch_size):
         dataset = get_ucf101(subset, args)
     elif dataset_name == "HMDB51":
         dataset = get_hmdb51(subset, args)
+    elif dataset_name == "SSv2":
+        dataset = get_ssv2(subset, args)
     else:
         raise NameError("invalide dataset name")
     loader = make_loader(dataset, args, batch_size)
