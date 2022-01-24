@@ -3,8 +3,13 @@ from comet_ml import API
 from comet_ml.query import Tag
 from comet_ml.query import Parameter
 
+from matplotlib import ticker
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+import argparse
+import configparser
 
 
 def plot_bar_graph():
@@ -42,7 +47,7 @@ def plot_bar_graph():
     plt.savefig("fig.png")
 
 
-def plot_line_graph():
+def plot_line_graph(plot_metric):
     """plot 3domain result of plot tag for comet_ml"""
 
     api = API(api_key="TawRAwNJiQjPaSMvBAwk4L4pF")
@@ -52,11 +57,9 @@ def plot_line_graph():
     dataset_list = ["UCF101", "Kinetics", "HMDB51"]
     plot_dict = {"UCF101": [], "Kinetics": [], "HMDB51": []}
 
-    plot_metric = ["train_accuracy", "val_accuracy", "train_loss", "val_loss"]
-    plot_id = 3
-    plot_metric = plot_metric[plot_id]
-
     fig, ax = plt.subplots()
+    ax.set_xlim(0, 15000)
+    fig.subplots_adjust(bottom=0.2, left=0.2)
     left = np.array([1000, 2000, 3000, 4000, 5000, 6000, 7000,
                      8000, 9000, 10000, 11000, 12000, 13000, 14000])
 
@@ -67,25 +70,40 @@ def plot_line_graph():
         # plt.plot(left, plot_dict[dataset], label=dataset)
         plt.plot(left, plot_dict[dataset])
 
-    ax.set_xlabel("iteration", size=18)
-    ax.set_xticks([0, 2000, 4000, 6000, 8000, 10000, 12000, 14000])
-    if plot_id == 0:
+    ax.set_xlabel("iteration", size=24)
+    ax.set_xticks([0, 5000, 10000])
+    if plot_metric == "train_loss":
         ax.set_ylabel("train loss", size=24)
         ax.set_yticks([0, 1, 2, 3, 4, 5, 6])
-    if plot_id == 1:
+        ax.set_ylim(0, 6)
+        plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(1))
+    if plot_metric == "val_loss":
         ax.set_ylabel("val loss", size=24)
         ax.set_yticks([0, 1, 2, 3, 4, 5, 6])
-    if plot_id == 2:
+        ax.set_ylim(0, 6)
+        plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(1))
+    if plot_metric == "train_accuracy":
         ax.set_ylabel("train top-1 accuracy (%)", size=24)
         ax.set_yticks([0, 20, 40, 60, 80, 100])
-    if plot_id == 3:
+        ax.set_ylim(0, 100)
+        plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(10))
+    if plot_metric == "val_accuracy":
         ax.set_ylabel("val top-1 accuracy (%)", size=24)
         ax.set_yticks([0, 20, 40, 60, 80, 100])
+        ax.set_ylim(0, 100)
+        plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(10))
+    # plt.minorticks_on()
+    plt.gca().xaxis.set_minor_locator(ticker.MultipleLocator(1000))
 
+    ax.grid(which="both", axis="x", color="black",
+            alpha=0.7, linestyle="--", linewidth=0.5,)
+    ax.grid(which="both", axis="y", color="black",
+            alpha=0.7, linestyle="--", linewidth=0.5,)
+    ax.tick_params(direction="out", labelsize=24)
     plt.savefig("plot/domain_3/" + plot_metric + ".pdf")
 
 
-def plot_line_graph2():
+def plot_line_graph2(plot_metric):
     """plot 1domain result of plot2 tag for comet_ml"""
 
     api = API(api_key="TawRAwNJiQjPaSMvBAwk4L4pF")
@@ -96,11 +114,10 @@ def plot_line_graph2():
     dataset_list2 = ["UCF101", "Kinetics400", "HMDB51"]
     plot_dict = {"UCF101": [], "Kinetics": [], "HMDB51": []}
 
-    plot_metric = ["train_loss", "val_loss", "train_accuracy", "val_accuracy"]
-    plot_id = 0
-    plot_metric = plot_metric[plot_id]
-
     fig, ax = plt.subplots()
+    ax.set_xlim(0, 15000)
+    fig.subplots_adjust(bottom=0.2, left=0.2)
+
     left = np.array([1000, 2000, 3000, 4000, 5000, 6000, 7000,
                      8000, 9000, 10000, 11000, 12000, 13000, 14000])
 
@@ -114,24 +131,51 @@ def plot_line_graph2():
         # print(plot_dict[dataset_list[i]])
 
     ax.set_xlabel("iteration", size=24)
-    ax.set_xticks([0, 2000, 4000, 6000, 8000, 10000, 12000, 14000])
-    if plot_id == 0:
+    ax.set_xticks([0, 5000, 10000])
+    if plot_metric == "train_loss":
         ax.set_ylabel("train loss", size=24)
         ax.set_yticks([0, 1, 2, 3, 4, 5, 6])
+        ax.set_ylim(0, 6)
+        plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(1))
         plt.legend(fontsize=24)
-    if plot_id == 1:
+    if plot_metric == "val_loss":
         ax.set_ylabel("val loss", size=24)
         ax.set_yticks([0, 1, 2, 3, 4, 5, 6])
-    if plot_id == 2:
+        ax.set_ylim(0, 6)
+        plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(1))
+    if plot_metric == "train_accuracy":
         ax.set_ylabel("train top-1 accuracy (%)", size=24)
         ax.set_yticks([0, 20, 40, 60, 80, 100])
-    if plot_id == 3:
+        ax.set_ylim(0, 100)
+        plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(10))
+    if plot_metric == "val_accuracy":
         ax.set_ylabel("val top-1 accuracy (%)", size=24)
         ax.set_yticks([0, 20, 40, 60, 80, 100])
+        ax.set_ylim(0, 100)
+        plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(10))
+    # plt.minorticks_on()
+    plt.gca().xaxis.set_minor_locator(ticker.MultipleLocator(1000))
 
+    ax.grid(which="both", axis="x", color="black",
+            alpha=0.7, linestyle="--", linewidth=0.5,)
+    ax.grid(which="both", axis="y", color="black",
+            alpha=0.7, linestyle="--", linewidth=0.5,)
+    ax.tick_params(direction="out", labelsize=24)
     plt.savefig("plot/domain_1/" + plot_metric + ".pdf")
 
 
+def get_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-nd", "--num_domain",
+                        type=int, default=1, choices=[1, 3])
+    parser.add_argument("-pm", "--plot_metric", type=str,
+                        choices=["train_loss", "val_loss", "train_accuracy", "val_accuracy"])
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    plot_line_graph2()
-    # plot_bar_graph()
+    args = get_arguments()
+    if args.num_domain == 1:
+        plot_line_graph2(args.plot_metric)
+    elif args.num_domain == 3:
+        plot_line_graph(args.plot_metric)
