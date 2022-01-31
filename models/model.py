@@ -298,7 +298,7 @@ class MyNet(nn.Module):
     def __init__(self, args, config):
         super().__init__()
         model = torch.hub.load(
-            'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.pretrained)
+            'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.scratch)
         self.dim_features = model.blocks[5].proj.in_features
         self.num_frames = args.num_frames
         self.class_dict = make_class_dict(args, config)
@@ -348,7 +348,7 @@ class TorchInfoMyNet(nn.Module):
     def __init__(self, args):
         super().__init__()
         model = torch.hub.load(
-            'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.pretrained)
+            'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.scratch)
         self.dim_features = model.blocks[5].proj.in_features
         self.num_frames = args.num_frames
         self.num_class = 400

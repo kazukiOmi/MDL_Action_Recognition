@@ -58,11 +58,11 @@ def get_arguments():
                         default=[8000, 12000])
     parser.add_argument("--lr_gamma", type=float, default=0.1)
     parser.add_argument("--weight_decay", type=float, default=5e-5)
-    parser.add_argument("--pretrained", type=bool, default=True,)
+    parser.add_argument("--scratch", action="store_false")
     parser.add_argument("-fix", "--fix_shared_params",
-                        type=bool, default=False,)
+                        action="store_true",)
     parser.add_argument("--is_fix_in_train",
-                        type=bool, default=False,)
+                        action="store_true",)
     parser.add_argument("-itr_fix", "--iteration_fix",
                         type=int, default=10000,)
     parser.add_argument("-ap", "--adp_place", type=str, default="stages",
@@ -89,7 +89,7 @@ def main():
     config.read("config.ini")
 
     """train"""
-    train.train(args, config)
+    # train.train(args, config)
     # train.val(args, config)
     # train.multiview_val(args, config)
 

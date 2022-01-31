@@ -83,22 +83,24 @@ def plot_line_graph(plot_metric):
         ax.set_ylim(0, 6)
         plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(1))
     if plot_metric == "train_accuracy":
-        ax.set_ylabel("train top-1 accuracy (%)", size=24)
+        ax.set_ylabel("train top-1", size=24)
         ax.set_yticks([0, 20, 40, 60, 80, 100])
         ax.set_ylim(0, 100)
         plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(10))
     if plot_metric == "val_accuracy":
-        ax.set_ylabel("val top-1 accuracy (%)", size=24)
+        ax.set_ylabel("val top-1", size=24)
         ax.set_yticks([0, 20, 40, 60, 80, 100])
         ax.set_ylim(0, 100)
         plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(10))
     # plt.minorticks_on()
     plt.gca().xaxis.set_minor_locator(ticker.MultipleLocator(1000))
 
-    ax.grid(which="both", axis="x", color="black",
-            alpha=0.7, linestyle="--", linewidth=0.5,)
+    ax.grid(which="minor", axis="x", color="black",
+            alpha=0.3, linestyle="--", linewidth=0.3,)
+    ax.grid(which="major", axis="x", color="black",
+            alpha=0.7, linestyle="-", linewidth=1.0,)
     ax.grid(which="both", axis="y", color="black",
-            alpha=0.7, linestyle="--", linewidth=0.5,)
+            alpha=0.3, linestyle="--", linewidth=0.3,)
     ax.tick_params(direction="out", labelsize=24)
     plt.savefig("plot/domain_3/" + plot_metric + ".pdf")
 
@@ -144,22 +146,24 @@ def plot_line_graph2(plot_metric):
         ax.set_ylim(0, 6)
         plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(1))
     if plot_metric == "train_accuracy":
-        ax.set_ylabel("train top-1 accuracy (%)", size=24)
+        ax.set_ylabel("train top-1", size=24)
         ax.set_yticks([0, 20, 40, 60, 80, 100])
         ax.set_ylim(0, 100)
         plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(10))
     if plot_metric == "val_accuracy":
-        ax.set_ylabel("val top-1 accuracy (%)", size=24)
+        ax.set_ylabel("val top-1", size=24)
         ax.set_yticks([0, 20, 40, 60, 80, 100])
         ax.set_ylim(0, 100)
         plt.gca().yaxis.set_minor_locator(ticker.MultipleLocator(10))
     # plt.minorticks_on()
     plt.gca().xaxis.set_minor_locator(ticker.MultipleLocator(1000))
 
-    ax.grid(which="both", axis="x", color="black",
-            alpha=0.7, linestyle="--", linewidth=0.5,)
+    ax.grid(which="minor", axis="x", color="black",
+            alpha=0.3, linestyle="--", linewidth=0.3,)
+    ax.grid(which="major", axis="x", color="black",
+            alpha=0.7, linestyle="-", linewidth=1.0,)
     ax.grid(which="both", axis="y", color="black",
-            alpha=0.7, linestyle="--", linewidth=0.5,)
+            alpha=0.3, linestyle="--", linewidth=0.3,)
     ax.tick_params(direction="out", labelsize=24)
     plt.savefig("plot/domain_1/" + plot_metric + ".pdf")
 
