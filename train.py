@@ -108,7 +108,7 @@ def train(args, config):
         "weight decay": weight_decay,
         "mode": args.adp_mode,
         "adp place": args.adp_place,
-        "pretrained": args.pretrained,
+        "pretrained": args.scratch,
         "ex_name": args.ex_name,
         # "LN": "No",
         "adp num": args.adp_num,
@@ -195,7 +195,7 @@ def train(args, config):
                 model.fix_shared_params(args)
                 print("fix shared params")
 
-            if (step) % 1000 == 0:
+            if (step) % 5000 == 0:
                 # if (itr + 1) % 3500 == 0:
                 """Val mode"""
                 model.eval()
@@ -274,7 +274,7 @@ def val(args, config):
         "weight decay": weight_decay,
         "mode": args.adp_mode,
         "adp place": args.adp_place,
-        "pretrained": args.pretrained,
+        "pretrained": args.scratch,
         "ex_name": args.ex_name,
     }
     experiment = Experiment(
@@ -359,7 +359,7 @@ def multiview_val(args, config):
         # "weight decay": weight_decay,
         "mode": args.adp_mode,
         "adp place": args.adp_place,
-        "pretrained": args.pretrained,
+        "pretrained": args.scratch,
         "ex_name": args.ex_name,
         # "LN": "No",
         "adp num": args.adp_num,

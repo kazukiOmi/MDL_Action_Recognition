@@ -89,7 +89,7 @@ def main():
     config.read("config.ini")
 
     """train"""
-    # train.train(args, config)
+    train.train(args, config)
     # train.val(args, config)
     # train.multiview_val(args, config)
 
