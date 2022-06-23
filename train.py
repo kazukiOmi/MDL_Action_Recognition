@@ -1,13 +1,12 @@
 from comet_ml import Experiment
 import torch
 import torch.nn as nn
-
-from models import model as Model
-from datasets import dataset as Data
-
 from tqdm import tqdm
 import os
 import os.path as osp
+
+from models import model as Model
+from datasets import dataset as Data
 
 
 class AverageMeter(object):
@@ -79,10 +78,7 @@ def train(args, config):
         loader_itr_list.append(iter(d))
 
     model = Model.MyNet(args, config)
-    # model_path = "checkpoint/efficient_space_temporal/ex5/12000_checkpoint.pth"
-    # model.load_state_dict(torch.load(model_path))
     model = model.to(device)
-    # model = torch.nn.DataParallel(model)
     torch.backends.cudnn.benchmark = True
 
     lr = args.learning_rate
@@ -101,7 +97,7 @@ def train(args, config):
         "Dataset": args.dataset_names,
         "Iteration": args.iteration,
         "batch_size": args.batch_size_list,
-        # "optimizer": "Adam(0.9, 0.999)",
+        "optimizer": "Adam(0.9, 0.999)",
         "learning late": lr,
         "scheuler": args.sche_list,
         "lr_gamma": args.lr_gamma,
@@ -110,7 +106,6 @@ def train(args, config):
         "adp place": args.adp_place,
         "pretrained": args.scratch,
         "ex_name": args.ex_name,
-        # "LN": "No",
         "adp num": args.adp_num,
         "adp_pos": args.adp_pos,
         "is_fix_in_train": args.is_fix_in_train,
@@ -127,7 +122,6 @@ def train(args, config):
     experiment.log_parameters(hyper_params)
 
     step = 0
-    # step = 12000
 
     num_iters = args.iteration
 
@@ -195,8 +189,8 @@ def train(args, config):
                 model.fix_shared_params(args)
                 print("fix shared params")
 
-            if (step) % 5000 == 0:
-                # if (itr + 1) % 3500 == 0:
+            if (step) % 5 == 0:
+                # if (step) % 5000 == 0:
                 """Val mode"""
                 model.eval()
 
@@ -267,7 +261,7 @@ def val(args, config):
         "Dataset": args.dataset_names,
         "Iteration": args.iteration,
         "batch_size": args.batch_size_list,
-        # "optimizer": "Adam(0.9, 0.999)",
+        "optimizer": "Adam(0.9, 0.999)",
         "learning late": lr,
         "scheuler": args.sche_list,
         "lr_gamma": args.lr_gamma,
@@ -344,26 +338,9 @@ def multiview_val(args, config):
     model = model.to(device)
     torch.backends.cudnn.benchmark = True
 
-    # criterion = nn.CrossEntropyLoss()
-    # lr = args.learning_rate
-    # weight_decay = args.weight_decay
-
     hyper_params = {
         "Dataset": args.dataset_names,
-        # "Iteration": args.iteration,
-        # "batch_size": args.batch_size_list,
-        # # "optimizer": "Adam(0.9, 0.999)",
-        # "learning late": lr,
-        # "scheuler": args.sche_list,
-        # "lr_gamma": args.lr_gamma,
-        # "weight decay": weight_decay,
-        "mode": args.adp_mode,
-        "adp place": args.adp_place,
-        "pretrained": args.scratch,
         "ex_name": args.ex_name,
-        # "LN": "No",
-        "adp num": args.adp_num,
-        "adp_pos": args.adp_pos,
         "multiview": True,
     }
     experiment = Experiment(
@@ -375,7 +352,6 @@ def multiview_val(args, config):
     experiment.add_tag('multiview')
     experiment.log_parameters(hyper_params)
     step = 0
-    # val_loss = AverageMeter()
     acc_top1 = AverageMeter()
     acc_top5 = AverageMeter()
 

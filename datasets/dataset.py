@@ -125,7 +125,6 @@ def get_multiview_kinetics(subset, args):
                 transforms.Lambda(lambda x: x / 255.),
                 Normalize((0.45, 0.45, 0.45), (0.225, 0.225, 0.225)),
                 ShortSideScale(256),
-                # CenterCrop(224),
             ]),
         ),
         RemoveKey("audio"),

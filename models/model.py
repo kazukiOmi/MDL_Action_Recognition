@@ -4,7 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import pytorchvideo
 from pytorchvideo.models import x3d
-import torchinfo
 
 
 class Adapter(nn.Module):
@@ -12,9 +11,8 @@ class Adapter(nn.Module):
         super().__init__()
         self.channel = feature_list[0]
         self.height = feature_list[1]
-        # self.norm1 = nn.LayerNorm([channel, frame, height, height])
         self.norm1 = nn.BatchNorm3d(self.channel)
-        self.act = nn.ReLU()  # TODO(omi): implement swish
+        self.act = nn.ReLU()
 
     def swap(self, input: torch.Tensor) -> torch.Tensor:
         return input
@@ -342,51 +340,3 @@ class MyNet(nn.Module):
             for dataset_name in args.dataset_names:
                 if dataset_name in name and param.requires_grad == False:
                     param.requires_grad = True
-
-
-class TorchInfoMyNet(nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        model = torch.hub.load(
-            'facebookresearch/pytorchvideo', "x3d_m", pretrained=args.scratch)
-        self.dim_features = model.blocks[5].proj.in_features
-        self.num_frames = args.num_frames
-        self.num_class = 400
-
-        self.feature_extract = nn.Sequential(
-            model.blocks[0],
-            # EfficientVideoAdapter([24, 112], 16),
-            model.blocks[1],
-            # EfficientVideoAdapter([24, 56], 16),
-            model.blocks[2],
-            # EfficientVideoAdapter([48, 28], 16),
-            model.blocks[3],
-            # EfficientVideoAdapter([96, 14], 16),
-            model.blocks[4],
-            # EfficientVideoAdapter([192, 7], 16),
-        )
-        self.head_bottom = nn.Sequential(
-            model.blocks[5].pool,
-            model.blocks[5].dropout
-        )
-        self.head_top = model.blocks[5].proj
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.feature_extract(x)
-        x = self.head_bottom(x)
-        x = x.permute(0, 2, 3, 4, 1)
-        x = self.head_top(x)
-        x = x.view(-1, self.num_class)
-        return x
-
-
-def torch_info(model):
-    bs = 1
-    input_size = (bs, 3, 16, 224, 224)
-    torchinfo.summary(
-        model=model,
-        input_size=input_size,
-        depth=8,
-        col_names=["input_size", "output_size"],
-        # row_setting=("var_names")
-    )
