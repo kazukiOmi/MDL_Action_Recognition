@@ -47,4 +47,5 @@ python main.py -m "train"
 
 ## 学会発表
 [SSII2022](https://confit.atlas.jp/guide/event/ssii2022/subject/IS1-02/category?cryptoId=)
-![poster](images/SSII2022_poster.pdf "SSII2022_poster")
+
+![SSII2022_omi_poster-1](https://user-images.githubusercontent.com/80406150/175548611-646b8328-db7c-478e-b43b-40ea7fb4c40e.png)
