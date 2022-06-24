@@ -14,9 +14,15 @@
 
 ## 準備
 [comet](https://www.comet-ml.com/docs/)でログを残すためにアカウント作成
-以下のコマンドでcometのapiをホームディレクトリ以下に置けばデフォルトでそれを参照する．
+以下のコマンドでcometのapiをホームディレクトリ以下に置けばデフォルトでそれを参照する
 ```bash
 comet init --api-key
+```
+
+環境は[こちら](https://hub.docker.com/r/tttamaki/docker-ssh/)のDockerイメージからコンテナ作成
+必要に応じて以下のコマンドで実行環境をそろえる
+```bash
+pip install -r requirements.txt
 ```
 
 ## 実行
@@ -42,7 +48,7 @@ python main.py -m "train"
   - `top`:出力層側のResStageから`-adp_num`個
   - `bottom`：入力層側のResStageから`-adp_num`個
 - `--fix_shared_params`：ドメイン非依存パラメータを固定するオプション
-- `-ex_name`：実験名（モデルの保存場所とcometのログを紐づけるため）
+- `-ex_name`：実験名（モデルの保存場所とcometのログを紐づけるため，また評価時はここで指定したモデルの評価が行われる）
 
 
 ## 学会発表
