@@ -38,8 +38,6 @@ def get_arguments():
                         default=[[24, 112], [24, 56], [48, 28], [96, 14], [192, 7]])
     parser.add_argument("--cuda", type=str, default="cuda:2")
     parser.add_argument("--ex_name", type=str, default="test")
-    parser.add_argument("--api_key", type=str,
-                        default="TawRAwNJiQjPaSMvBAwk4L4pF")
     return parser.parse_args()
 
 

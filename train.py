@@ -113,7 +113,6 @@ def train(args, config):
     }
 
     experiment = Experiment(
-        api_key=args.api_key,
         project_name="feature-extract",
         workspace="kazukiomi",
     )
@@ -272,7 +271,6 @@ def val(args, config):
         "ex_name": args.ex_name,
     }
     experiment = Experiment(
-        api_key=args.api_key,
         project_name="feature-extract",
         workspace="kazukiomi",
     )
@@ -344,7 +342,6 @@ def multiview_val(args, config):
         "multiview": True,
     }
     experiment = Experiment(
-        api_key=args.api_key,
         project_name="feature-extract",
         workspace="kazukiomi",
     )

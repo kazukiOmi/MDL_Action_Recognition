@@ -1,4 +1,4 @@
-# 202109_omi_multi_domain
+# 時空間アダプタを用いた動作認識のためのマルチドメイン学習
 
 動作認識モデルのマルチドメイン学習を行うコード
 
@@ -12,6 +12,13 @@
 - main.py: 実行ファイル
 - plot.py: 実行結果をプロット
 
+## 準備
+[comet](https://www.comet-ml.com/docs/)でログを残すためにアカウント作成
+以下のコマンドでcometのapiをホームディレクトリ以下に置けばデフォルトでそれを参照する．
+```bash
+comet init --api-key
+```
+
 ## 実行
 ```bash
 python main.py -m "train"
@@ -24,7 +31,7 @@ python main.py -m "train"
 - `-i`：イテレーション数
 - `-dn`：使用するデータセットのリスト
 - `-bsl`：それぞれのデータセットのバッチサイズ
-- `-lr`：学習率
+- `-lr`：初期学習率
 - `-ap`：アダプタを入れる位置
   - `stages`:ResStage間
   - `blocks`：ResBlock間
@@ -34,4 +41,10 @@ python main.py -m "train"
 - `-adp_pos`：`-ap`で`stages`を選んだ場合のみResStageのどこにアダプタ入れるか指定
   - `top`:出力層側のResStageから`-adp_num`個
   - `bottom`：入力層側のResStageから`-adp_num`個
+- `--fix_shared_params`：ドメイン非依存パラメータを固定するオプション
 - `-ex_name`：実験名（モデルの保存場所とcometのログを紐づけるため）
+
+
+## 学会発表
+[SSII2022](https://confit.atlas.jp/guide/event/ssii2022/subject/IS1-02/category?cryptoId=)
+![poster](images/SSII2022_poster.pdf "SSII2022_poster")
