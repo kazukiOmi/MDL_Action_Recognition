@@ -14,12 +14,15 @@
 
 ## 準備
 [comet](https://www.comet-ml.com/docs/)でログを残すためにアカウント作成
+
 以下のコマンドでcometのapiをホームディレクトリ以下に置けばデフォルトでそれを参照する
 ```bash
 comet init --api-key
 ```
+<br>
 
 環境は[こちら](https://hub.docker.com/r/tttamaki/docker-ssh/)のDockerイメージからコンテナ作成
+
 必要に応じて以下のコマンドで実行環境をそろえる
 ```bash
 pip install -r requirements.txt
@@ -50,7 +53,9 @@ python main.py -m "train"
 - `--fix_shared_params`：ドメイン非依存パラメータを固定するオプション
 - `-ex_name`：実験名（モデルの保存場所とcometのログを紐づけるため，また評価時はここで指定したモデルの評価が行われる）
 
-
+<br>
+<br>
+<br>
 ## 学会発表
 [SSII2022](https://confit.atlas.jp/guide/event/ssii2022/subject/IS1-02/category?cryptoId=)
 
